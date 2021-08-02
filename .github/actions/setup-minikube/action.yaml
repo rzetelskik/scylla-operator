@@ -53,5 +53,5 @@ runs:
         sleep 1
       done
 
-      kubectl -n kube-system rollout status --timeout=5m deployment.apps/coredns
+      kubectl -n default rollout status --timeout=5m deployment.apps/coredns
 
