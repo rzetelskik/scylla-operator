@@ -112,12 +112,12 @@ func MemberService(sc *scyllav1.ScyllaCluster, rackName, name string, oldService
 	}
 }
 
-func makeConfigMap(sc *scyllav1.ScyllaCluster, data map[string]string) *corev1.ConfigMap {
+func MakeConfigMap(sc *scyllav1.ScyllaCluster, name string, data map[string]string) *corev1.ConfigMap {
 	labels := naming.ClusterLabels(sc)
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      sc.Name,
+			Name:      name,
 			Namespace: sc.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(sc, controllerGVK),
@@ -305,9 +305,9 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: c.Name, // FIXME: naming
+										Name: naming.StatefulSetNameForRack(r, c), // FIXME: naming
 									},
-									Optional: &opt,
+									Optional: &opt, // TODO non-optional
 								},
 							},
 						},
