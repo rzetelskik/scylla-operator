@@ -61,15 +61,15 @@ func (s *ScyllaConfig) Setup(ctx context.Context) ([]string, []string, error) {
 		return nil, nil, fmt.Errorf("can't setup iotune cache: %w", err)
 	}
 
-	klog.Info("Setting up scylla.yaml")
-	if err := s.setupScyllaYAML(scyllaYAMLPath, scyllaYAMLConfigMapPath); err != nil {
-		return nil, nil, fmt.Errorf("can't setup scylla.yaml: %w", err)
-	}
+	//klog.Info("Setting up scylla.yaml")
+	//if err := s.setupScyllaYAML(scyllaYAMLPath, scyllaYAMLConfigMapPath); err != nil {
+	//	return nil, nil, fmt.Errorf("can't setup scylla.yaml: %w", err)
+	//}
 
-	klog.Info("Setting up cassandra-rackdc.properties")
-	if err := s.setupRackDCProperties(); err != nil {
-		return nil, nil, fmt.Errorf("can't setup rackdc properties file: %w", err)
-	}
+	//klog.Info("Setting up cassandra-rackdc.properties")
+	//if err := s.setupRackDCProperties(); err != nil {
+	//	return nil, nil, fmt.Errorf("can't setup rackdc properties file: %w", err)
+	//}
 
 	klog.Info("Generating Scylla arguments")
 	return s.generateCommand(ctx)

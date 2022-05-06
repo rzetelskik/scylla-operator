@@ -294,17 +294,6 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: stringOrDefault(r.ScyllaConfig, "scylla-config"),
-									},
-									Optional: &opt,
-								},
-							},
-						},
-						{
-							Name: "scylla-generated-config-volume", // FIXME: naming
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
 										Name: naming.StatefulSetNameForRack(r, c), // FIXME: naming
 									},
 									Optional: &opt, // TODO non-optional
@@ -422,12 +411,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 								},
 								{
 									Name:      "scylla-config-volume",
-									MountPath: naming.ScyllaConfigDirName,
-									ReadOnly:  true,
-								},
-								{
-									Name:      "scylla-generated-config-volume", // FIXME
-									MountPath: "/mnt/scylla-generated-config",   // FIXME
+									MountPath: "/etc/scylla", // FIXME: constant
 									ReadOnly:  true,
 								},
 								{
