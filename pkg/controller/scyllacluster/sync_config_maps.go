@@ -17,7 +17,9 @@ import (
 )
 
 func (scc *Controller) makeConfigMap(sc *scyllav1.ScyllaCluster) *corev1.ConfigMap {
-	return makeConfigMap(sc, map[string]string{})
+	data := map[string]string{}
+
+	return makeConfigMap(sc, data)
 }
 
 func (scc *Controller) pruneConfigMaps(ctx context.Context, required *corev1.ConfigMap, configMaps map[string]*corev1.ConfigMap) error {

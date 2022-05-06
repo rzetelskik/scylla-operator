@@ -301,6 +301,17 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 							},
 						},
 						{
+							Name: "scylla-generated-config-volume", // FIXME: naming
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: c.Name, // FIXME: naming
+									},
+									Optional: &opt,
+								},
+							},
+						},
+						{
 							Name: scyllaAgentConfigVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
@@ -412,6 +423,11 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 								{
 									Name:      "scylla-config-volume",
 									MountPath: naming.ScyllaConfigDirName,
+									ReadOnly:  true,
+								},
+								{
+									Name:      "scylla-generated-config-volume", // FIXME
+									MountPath: "/mnt/scylla-generated-config",   // FIXME
 									ReadOnly:  true,
 								},
 								{
