@@ -284,6 +284,46 @@ func (scc *Controller) getPDBs(ctx context.Context, sc *scyllav1.ScyllaCluster) 
 	return cm.ClaimPodDisruptionBudgets(pdbs)
 }
 
+func (scc *Controller) getConfigMaps(ctx context.Context, sc *scyllav1.ScyllaCluster) (map[string]*corev1.ConfigMap, error) {
+	configMaps, err := scc.configMapLister.ConfigMaps(sc.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	selector := labels.SelectorFromSet(labels.Set{
+		naming.ClusterNameLabel: sc.Name,
+	})
+
+	canAdoptFunc := func() error {
+		fresh, err := scc.scyllaClient.ScyllaClusters(sc.Namespace).Get(ctx, sc.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		if fresh.UID != sc.UID {
+			return fmt.Errorf("original ScyllaCluster %v/%v is gone: got uid %v, wanted %v", sc.Namespace, sc.Name, fresh.UID, sc.UID)
+		}
+
+		if fresh.GetDeletionTimestamp() != nil {
+			return fmt.Errorf("%v/%v has just been deleted at %v", sc.Namespace, sc.Name, sc.DeletionTimestamp)
+		}
+
+		return nil
+	}
+	cm := controllertools.NewConfigMapControllerRefManager(
+		ctx,
+		sc,
+		controllerGVK,
+		selector,
+		canAdoptFunc,
+		controllertools.RealConfigMapControl{
+			KubeClient: scc.kubeClient,
+			Recorder:   scc.eventRecorder,
+		},
+	)
+	return cm.ClaimConfigMaps(configMaps)
+}
+
 func (scc *Controller) sync(ctx context.Context, key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -336,6 +376,11 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		return err
 	}
 
+	configMaps, err := scc.getConfigMaps(ctx, sc)
+	if err != nil {
+		return err
+	}
+
 	status := scc.calculateStatus(sc, statefulSetMap, serviceMap)
 
 	if sc.DeletionTimestamp != nil {
@@ -353,6 +398,13 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 	err = scc.syncRoleBindings(ctx, sc, roleBindings)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("can't sync rolebindings: %w", err))
+		// TODO: Set degraded condition
+	}
+
+	// TODO status
+	err = scc.syncConfigMaps(ctx, sc, configMaps)
+	if err != nil {
+		errs = append(errs, err)
 		// TODO: Set degraded condition
 	}
 

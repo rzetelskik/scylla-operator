@@ -63,6 +63,7 @@ type Controller struct {
 	podLister            corev1listers.PodLister
 	serviceLister        corev1listers.ServiceLister
 	secretLister         corev1listers.SecretLister
+	configMapLister      corev1listers.ConfigMapLister
 	serviceAccountLister corev1listers.ServiceAccountLister
 	roleBindingLister    rbacv1listers.RoleBindingLister
 	statefulSetLister    appsv1listers.StatefulSetLister
@@ -82,6 +83,7 @@ func NewController(
 	podInformer corev1informers.PodInformer,
 	serviceInformer corev1informers.ServiceInformer,
 	secretInformer corev1informers.SecretInformer,
+	configMapInformer corev1informers.ConfigMapInformer,
 	serviceAccountInformer corev1informers.ServiceAccountInformer,
 	roleBindingInformer rbacv1informers.RoleBindingInformer,
 	statefulSetInformer appsv1informers.StatefulSetInformer,
@@ -112,6 +114,7 @@ func NewController(
 		podLister:            podInformer.Lister(),
 		serviceLister:        serviceInformer.Lister(),
 		secretLister:         secretInformer.Lister(),
+		configMapLister:      configMapInformer.Lister(),
 		serviceAccountLister: serviceAccountInformer.Lister(),
 		roleBindingLister:    roleBindingInformer.Lister(),
 		statefulSetLister:    statefulSetInformer.Lister(),

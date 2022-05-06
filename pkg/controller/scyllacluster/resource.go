@@ -112,6 +112,22 @@ func MemberService(sc *scyllav1.ScyllaCluster, rackName, name string, oldService
 	}
 }
 
+func makeConfigMap(sc *scyllav1.ScyllaCluster, data map[string]string) *corev1.ConfigMap {
+	labels := naming.ClusterLabels(sc)
+
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      sc.Name,
+			Namespace: sc.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(sc, controllerGVK),
+			},
+			Labels: labels,
+		},
+		Data: data,
+	}
+}
+
 func memberServicePorts(cluster *scyllav1.ScyllaCluster) []corev1.ServicePort {
 	ports := []corev1.ServicePort{
 		{
