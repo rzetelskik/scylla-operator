@@ -6,18 +6,17 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/magiconair/properties"
-	"k8s.io/klog/v2"
-
-	"github.com/pkg/errors"
-
 	"github.com/ghodss/yaml"
+	"github.com/magiconair/properties"
+	"github.com/pkg/errors"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/resourceapply"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog/v2"
 )
 
 // mergeYAMLs merges two arbitrary YAML structures at the top level.
@@ -103,9 +102,12 @@ func (scc *Controller) makeConfigMaps(ctx context.Context, sc *scyllav1.ScyllaCl
 	for _, rack := range sc.Spec.Datacenter.Racks {
 		cmName := naming.StatefulSetNameForRack(rack, sc) // FIXME: naming
 
-		suppliedCM, err := scc.kubeClient.CoreV1().ConfigMaps(sc.Namespace).Get(ctx, rack.ScyllaConfig, metav1.GetOptions{}) // FIXME get or default
+		suppliedCM, err := scc.kubeClient.CoreV1().ConfigMaps(sc.Namespace).Get(ctx, rack.ScyllaConfig, metav1.GetOptions{})
 		if err != nil {
-			return nil, err // FIXME fmt, err aggregate
+			if !apierrors.IsNotFound(err) {
+				return nil, fmt.Errorf("can't get ConfigMap: %w", err) // FIXME: err aggregate
+			}
+			klog.InfoS("ConfigMap unavailable", "ConfigMap", rack.ScyllaConfig)
 		}
 
 		scyllaConfigBytes, err := makeScyllaConfig(suppliedCM.BinaryData[naming.ScyllaConfigName], sc.Name)
