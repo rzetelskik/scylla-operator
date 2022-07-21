@@ -266,13 +266,19 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 								},
 							},
 						},
+						{
+							Name: "tcpdump-volume",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
 					},
 					Tolerations: placement.Tolerations,
 					InitContainers: []corev1.Container{
 						{
 							Name:            naming.SidecarInjectorContainerName,
 							Image:           sidecarImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Command: []string{
 								"/bin/sh",
 								"-c",
@@ -352,6 +358,11 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 									Name:      "scylla-client-config-volume",
 									MountPath: naming.ScyllaClientConfigDirName,
 									ReadOnly:  true,
+								},
+								{
+									Name:      "tcpdump-volume",
+									MountPath: "/mnt/tcpdump/",
+									ReadOnly:  false,
 								},
 							},
 							// Add CAP_SYS_NICE as instructed by scylla logs

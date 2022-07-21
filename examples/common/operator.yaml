@@ -2560,7 +2560,7 @@ spec:
       containers:
       - name: scylla-operator
         image: docker.io/scylladb/scylla-operator:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         env:
         - name: SCYLLA_OPERATOR_IMAGE
           value: docker.io/scylladb/scylla-operator:latest

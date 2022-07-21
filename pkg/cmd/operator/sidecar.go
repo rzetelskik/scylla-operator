@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"sync"
 	"syscall"
 	"time"
@@ -420,11 +421,30 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		sc.Run(ctx)
 	}()
 
+	// Run tcpdump
+	tcpdumpCmd := exec.CommandContext(ctx, "tcpdump", "-i", "any", "-U", "-w", "/mnt/tcpdump/log.out")
+	err = tcpdumpCmd.Start()
+	klog.Info("Starting tcpdump...")
+	if err != nil {
+		klog.Fatalf("can't start tcpdump command: %v", err)
+	}
+	klog.Info("tcpdump started...")
+
 	// Run scylla in a new process.
 	err = scyllaCmd.Start()
 	if err != nil {
 		return fmt.Errorf("can't start scylla: %w", err)
 	}
+
+	defer func() {
+		klog.InfoS("Waiting for tcpdump process to finish")
+		defer klog.InfoS("tcpdump process finished")
+
+		err = tcpdumpCmd.Wait()
+		if err != nil {
+			klog.ErrorS(err, "can't wait for tcpdump command to finish")
+		}
+	}()
 
 	defer func() {
 		klog.InfoS("Waiting for scylla process to finish")
@@ -450,6 +470,21 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 			return
 		}
 		klog.InfoS("Sent SIGTERM to the scylla process")
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		<-ctx.Done()
+
+		klog.InfoS("Sending SIGTERM to the tcpdump process")
+		err := tcpdumpCmd.Process.Signal(syscall.SIGTERM)
+		if err != nil {
+			klog.ErrorS(err, "Can't send SIGTERM to the tcpdump process")
+			return
+		}
+		klog.InfoS("Sent SIGTERM to the tcpdump process")
 	}()
 
 	<-ctx.Done()
