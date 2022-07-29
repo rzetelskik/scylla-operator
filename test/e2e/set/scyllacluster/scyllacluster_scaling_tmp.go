@@ -32,6 +32,9 @@ var _ = g.Describe("ScyllaCluster", func() {
 		defer cancel()
 
 		sc := scyllafixture.BasicScyllaCluster.ReadOrFail()
+		sc.Spec.Repository = "docker.io/rzetelskik/scylla"
+		sc.Spec.Version = "tcpdump"
+		sc.Spec.ScyllaArgs = "--logger-log-level storage_service=debug:gossip=trace:messaging_service=debug:rpc=debug"
 		sc.Spec.Sysctls = []string{"fs.aio-max-nr=5578536"}
 		sc.Spec.Datacenter.Racks[0].Members = 3
 		sc.Spec.Datacenter.Racks[0].Placement = &v1.PlacementSpec{
