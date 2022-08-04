@@ -5,10 +5,11 @@ package scyllacluster
 import (
 	"context"
 	"fmt"
-	"os"
-	"time"
 
 	g "github.com/onsi/ginkgo/v2"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	o "github.com/onsi/gomega"
 	v1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -16,10 +17,8 @@ import (
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubectl/pkg/drain"
 )
 
 var _ = g.Describe("ScyllaCluster", func() {
@@ -53,6 +52,14 @@ var _ = g.Describe("ScyllaCluster", func() {
 					},
 				},
 			},
+			Tolerations: []corev1.Toleration{
+				{
+					Key:      "role",
+					Operator: corev1.TolerationOpEqual,
+					Value:    "scylla-clusters",
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			},
 			PodAntiAffinity: &corev1.PodAntiAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 					{
@@ -81,7 +88,7 @@ var _ = g.Describe("ScyllaCluster", func() {
 		sc, err = utils.WaitForScyllaClusterState(waitCtx1, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		framework.By("Cordon and drain k8s node")
+		framework.By("Deleting last scylla node")
 		waitCtx3, waitCtx3Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx3Cancel()
 		podName := fmt.Sprintf("%s-%d", naming.StatefulSetNameForRack(sc.Spec.Datacenter.Racks[0], sc), sc.Spec.Datacenter.Racks[0].Members-1)
@@ -89,38 +96,13 @@ var _ = g.Describe("ScyllaCluster", func() {
 		pod, err := f.KubeClient().CoreV1().Pods(sc.Namespace).Get(waitCtx3, podName, metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		nodeName := pod.Spec.NodeName
-		o.Expect(nodeName).NotTo(o.BeEmpty())
-
-		waitCtx6, waitCtx6Cancel := utils.ContextForRollout(ctx, sc)
-		defer waitCtx6Cancel()
-		node, err := f.KubeAdminClient().CoreV1().Nodes().Get(waitCtx6, nodeName, metav1.GetOptions{})
-		o.Expect(err).NotTo(o.HaveOccurred())
-		o.Expect(node).NotTo(o.BeNil())
-
-		waitCtx8, waitCtx8Cancel := utils.ContextForRollout(ctx, sc)
-		defer waitCtx8Cancel()
-		helper := &drain.Helper{
-			Ctx:                 waitCtx8,
-			Client:              f.KubeAdminClient(),
-			Force:               true,
-			Timeout:             testTimeout,
-			GracePeriodSeconds:  -1,
-			IgnoreAllDaemonSets: true,
-			DeleteEmptyDirData:  true,
-			Out:                 os.Stdout,
-			ErrOut:              os.Stderr,
-		}
-
-		//err = drain.RunCordonOrUncordon(helper, node, true)
-		//o.Expect(err).NotTo(o.HaveOccurred())
-
-		err = drain.RunNodeDrain(helper, nodeName)
+		waitCtx7, waitCtx7Cancel := utils.ContextForRollout(ctx, sc)
+		defer waitCtx7Cancel()
+		err = f.KubeAdminClient().CoreV1().Pods(sc.Namespace).Delete(waitCtx7, podName, metav1.DeleteOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		time.Sleep(5 * time.Second)
-
-		err = drain.RunCordonOrUncordon(helper, node, false)
+		err = framework.WaitForObjectDeletion(ctx, f.DynamicAdminClient(), corev1.SchemeGroupVersion.WithResource("pods"), pod.Namespace, pod.Name, &pod.UID)
+		o.Expect(err).NotTo(o.HaveOccurred())
 
 		framework.By("Scaling the ScyllaCluster down to 2 replicas (decommissioning)")
 		sc, err = f.ScyllaClient().ScyllaV1().ScyllaClusters(sc.Namespace).Patch(
@@ -133,7 +115,7 @@ var _ = g.Describe("ScyllaCluster", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 		o.Expect(sc.Spec.Datacenter.Racks[0].Members).To(o.BeEquivalentTo(2))
 
-		framework.By("waiting for pod's deletion")
+		framework.By("Waiting for Pod's deletion")
 		waitCtx4, waitCtx4Cancel := utils.ContextForRollout(ctx, sc)
 		defer waitCtx4Cancel()
 		pod, err = f.KubeClient().CoreV1().Pods(sc.Namespace).Get(waitCtx4, podName, metav1.GetOptions{})
@@ -159,6 +141,5 @@ var _ = g.Describe("ScyllaCluster", func() {
 		defer waitCtx5Cancel()
 		sc, err = utils.WaitForScyllaClusterState(waitCtx5, f.ScyllaClient().ScyllaV1(), sc.Namespace, sc.Name, utils.IsScyllaClusterRolledOut)
 		o.Expect(err).NotTo(o.HaveOccurred())
-
 	})
 })
