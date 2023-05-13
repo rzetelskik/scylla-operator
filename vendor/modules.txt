@@ -442,7 +442,7 @@ github.com/munnerz/goautoneg
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
-# github.com/onsi/ginkgo/v2 v2.12.0
+# github.com/onsi/ginkgo/v2 v2.12.0 => github.com/rzetelskik/ginkgo/v2 v2.9.2-parallel-dry-run
 ## explicit; go 1.18
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
@@ -1383,3 +1383,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # github.com/gocql/gocql => github.com/scylladb/gocql v1.11.1
+# github.com/onsi/ginkgo/v2 => github.com/rzetelskik/ginkgo/v2 v2.9.2-parallel-dry-run

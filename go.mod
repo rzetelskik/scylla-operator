@@ -161,3 +161,5 @@ require (
 )
 
 replace github.com/gocql/gocql => github.com/scylladb/gocql v1.11.1
+
+replace github.com/onsi/ginkgo/v2 => github.com/rzetelskik/ginkgo/v2 v2.9.2-parallel-dry-run

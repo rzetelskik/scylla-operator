@@ -27,7 +27,6 @@ type SuiteConfig struct {
 	FailOnPending         bool
 	FailFast              bool
 	FlakeAttempts         int
-	MustPassRepeatedly    int
 	DryRun                bool
 	PollProgressAfter     time.Duration
 	PollProgressInterval  time.Duration
@@ -390,10 +389,6 @@ func VetConfig(flagSet GinkgoFlagSet, suiteConfig SuiteConfig, reporterConfig Re
 
 	if suiteConfig.ParallelTotal > 1 && suiteConfig.ParallelHost == "" {
 		errors = append(errors, GinkgoErrors.MissingParallelHostConfiguration())
-	}
-
-	if suiteConfig.DryRun && suiteConfig.ParallelTotal > 1 {
-		errors = append(errors, GinkgoErrors.DryRunInParallelConfiguration())
 	}
 
 	if suiteConfig.GracePeriod <= 0 {

@@ -192,10 +192,6 @@ func (o *RunOptions) Validate(args []string) error {
 		errs = append(errs, fmt.Errorf("parallelism can't be negative"))
 	}
 
-	if o.Parallelism > 1 && o.DryRun {
-		errs = append(errs, fmt.Errorf("dry-run isn't supported in parallel runs"))
-	}
-
 	if o.ParallelShard > 0 && len(o.ParallelServerAddress) == 0 {
 		errs = append(errs, fmt.Errorf("there has to be --%q given when specifying parallel shard", parallelServerAddressFlagKey))
 	}
@@ -318,11 +314,7 @@ func (o *RunOptions) run(ctx context.Context, streams genericclioptions.IOStream
 
 	suiteConfig.ParallelTotal = o.Parallelism
 	if suiteConfig.ParallelTotal == 0 {
-		if o.DryRun {
-			suiteConfig.ParallelTotal = 1
-		} else {
-			suiteConfig.ParallelTotal = o.SelectedSuite.DefaultParallelism
-		}
+		suiteConfig.ParallelTotal = o.SelectedSuite.DefaultParallelism
 	}
 
 	if suiteConfig.ParallelTotal <= 1 || o.ParallelShard != 0 {
@@ -333,6 +325,8 @@ func (o *RunOptions) run(ctx context.Context, streams genericclioptions.IOStream
 			ginkgo.GinkgoWriter.TeeTo(os.Stdout)
 			defer ginkgo.GinkgoWriter.ClearTeeWriters()
 		}
+
+		suiteConfig.DryRun = o.DryRun
 
 		klog.InfoS("Running specs")
 		passed := ginkgo.RunSpecs(&fakeT{}, suite, suiteConfig, reporterConfig)
