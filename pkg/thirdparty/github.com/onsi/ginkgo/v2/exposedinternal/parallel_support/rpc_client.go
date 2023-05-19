@@ -7,11 +7,6 @@ import (
 	"github.com/onsi/ginkgo/v2/types"
 )
 
-// TODO:
-// - get RPC working
-// - performance test
-// - add DeferCleanup to test helper
-
 type rpcClient struct {
 	serverHost string
 	client     *rpc.Client
