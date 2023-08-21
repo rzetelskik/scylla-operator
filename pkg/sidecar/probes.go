@@ -40,6 +40,16 @@ func (p *Prober) serviceRef() string {
 	return fmt.Sprintf("%s/%s", p.namespace, p.serviceName)
 }
 
+func (p *Prober) isNodePrewarming() (bool, error) {
+	svc, err := p.serviceLister.Services(p.namespace).Get(p.serviceName)
+	if err != nil {
+		return false, err
+	}
+
+	_, hasAnnotation := svc.Labels[naming.NodePrewarmingLabel]
+	return hasAnnotation, nil
+}
+
 func (p *Prober) isNodeUnderMaintenance() (bool, error) {
 	svc, err := p.serviceLister.Services(p.namespace).Get(p.serviceName)
 	if err != nil {
@@ -62,6 +72,20 @@ func (p *Prober) getNodeAddress() (string, error) {
 func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	isPrewarming, err := p.isNodePrewarming()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.ErrorS(err, "readyz probe: can't look up service prewarming label", "Service", p.serviceRef())
+		return
+	}
+
+	if isPrewarming {
+		// During maintenance Pod shouldn't be declare to be ready.
+		w.WriteHeader(http.StatusOK)
+		klog.V(2).InfoS("readyz probe: node is prewarming", "Service", p.serviceRef())
+		return
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {
@@ -126,6 +150,19 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	isPrewarming, err := p.isNodePrewarming()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.ErrorS(err, "readyz probe: can't look up service prewarming label", "Service", p.serviceRef())
+		return
+	}
+
+	if isPrewarming {
+		w.WriteHeader(http.StatusOK)
+		klog.V(2).InfoS("readyz probe: node is prewarming", "Service", p.serviceRef())
+		return
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {

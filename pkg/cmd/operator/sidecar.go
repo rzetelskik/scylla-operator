@@ -144,6 +144,9 @@ func (o *SidecarOptions) Complete() error {
 }
 
 func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Command) error {
+	start := time.Now()
+	klog.Infof("Starting sidecar process at time %s", start.String())
+
 	klog.Infof("%s version %s", cmd.Name(), version.Get())
 	cliflag.PrintFlags(cmd.Flags())
 
@@ -420,6 +423,39 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		defer wg.Done()
 		sc.Run(ctx)
 	}()
+
+	step := time.Now()
+	klog.Infof("Waiting for Service to be resumed at %s. Preparation took %s ms.", step.String(), step.Sub(start).String())
+
+	klog.V(2).InfoS("Waiting for Service to be resumed", "Service", naming.ManualRef(o.Namespace, o.ServiceName))
+	_, err = watchtools.UntilWithSync(
+		ctx,
+		serviceLW,
+		&corev1.Service{},
+		nil,
+		func(e watch.Event) (bool, error) {
+			switch t := e.Type; t {
+			case watch.Added, watch.Modified:
+				svc := e.Object.(*corev1.Service)
+				_, ok := svc.Labels["scylla-operator.scylladb.com/prewarming"]
+				if ok {
+					return false, nil
+				}
+
+				return true, nil
+			case watch.Error:
+				return false, apierrors.FromObject(e.Object)
+			default:
+				return false, fmt.Errorf("unexpected event type %v", t)
+			}
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("can't wait for service %q: %w", naming.ManualRef(o.Namespace, o.ServiceName), err)
+	}
+
+	stop := time.Now()
+	klog.Infof("Starting scylla process at %s.", stop.String())
 
 	// Run scylla in a new process.
 	err = scyllaCmd.Start()

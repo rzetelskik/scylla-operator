@@ -26,6 +26,8 @@ const (
 	// Readiness check will always fail when this label is added to member service.
 	NodeMaintenanceLabel = "scylla/node-maintenance"
 
+	NodePrewarmingLabel = "scylla-operator.scylladb.com/prewarming"
+
 	LabelValueTrue  = "true"
 	LabelValueFalse = "false"
 )
