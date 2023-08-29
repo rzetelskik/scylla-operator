@@ -8,6 +8,7 @@ import (
 	o "github.com/onsi/gomega"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/features"
+	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	cqlclientv1alpha1 "github.com/scylladb/scylla-operator/pkg/scylla/api/cqlclient/v1alpha1"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
@@ -260,12 +261,26 @@ func verifyScyllaCluster(ctx context.Context, kubeClient kubernetes.Interface, s
 }
 
 func getScyllaHostsAndWaitForFullQuorum(ctx context.Context, client corev1client.CoreV1Interface, sc *scyllav1.ScyllaCluster) []string {
-	framework.By("Waiting for the ScyllaCluster to reach consistency ALL")
-	hosts, err := utils.GetScyllaHostsAndWaitForFullQuorum(ctx, client, sc)
-	o.Expect(err).NotTo(o.HaveOccurred())
-	o.Expect(hosts).To(o.HaveLen(int(utils.GetMemberCount(sc))))
+	hosts := getScyllaHostsByDCAndWaitForFullQuorum(ctx, []*helpers.Pair[*scyllav1.ScyllaCluster, corev1client.CoreV1Interface]{
+		{
+			First:  sc,
+			Second: client,
+		},
+	})
+	return helpers.Flatten(helpers.GetMapValues(hosts))
+}
 
-	return hosts
+func getScyllaHostsByDCAndWaitForFullQuorum(ctx context.Context, scyllaClusterClientPairs []*helpers.Pair[*scyllav1.ScyllaCluster, corev1client.CoreV1Interface]) map[string][]string {
+	framework.By("Waiting for the ScyllaCluster(s) to reach consistency ALL")
+	dcHosts, err := utils.GetScyllaHostsByDCAndWaitForFullQuorum(ctx, scyllaClusterClientPairs)
+	o.Expect(err).NotTo(o.HaveOccurred())
+
+	for _, sccp := range scyllaClusterClientPairs {
+		o.Expect(dcHosts).To(o.HaveKey(sccp.First.Spec.Datacenter.Name))
+		o.Expect(dcHosts[sccp.First.Spec.Datacenter.Name]).To(o.HaveLen(int(utils.GetMemberCount(sccp.First))))
+	}
+
+	return dcHosts
 }
 
 func verifyCQLData(ctx context.Context, di *utils.DataInserter) {
@@ -279,11 +294,24 @@ func verifyCQLData(ctx context.Context, di *utils.DataInserter) {
 }
 
 func insertAndVerifyCQLData(ctx context.Context, hosts []string) *utils.DataInserter {
-	framework.By("Inserting data")
 	di, err := utils.NewDataInserter(hosts)
 	o.Expect(err).NotTo(o.HaveOccurred())
 
-	err = di.Insert()
+	insertAndVerifyCQLDataUsingDataInserter(ctx, di)
+	return di
+}
+
+func insertAndVerifyCQLDataByDC(ctx context.Context, hosts map[string][]string) *utils.DataInserter {
+	di, err := utils.NewMultiDCDataInserter(hosts)
+	o.Expect(err).NotTo(o.HaveOccurred())
+
+	insertAndVerifyCQLDataUsingDataInserter(ctx, di)
+	return di
+}
+
+func insertAndVerifyCQLDataUsingDataInserter(ctx context.Context, di *utils.DataInserter) *utils.DataInserter {
+	framework.By("Inserting data")
+	err := di.Insert()
 	o.Expect(err).NotTo(o.HaveOccurred())
 
 	verifyCQLData(ctx, di)
