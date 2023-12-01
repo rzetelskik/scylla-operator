@@ -1,0 +1,3 @@
+deployment "cert-manager" successfully rolled out
+deployment "cert-manager-cainjector" successfully rolled out
+deployment "cert-manager-webhook" successfully rolled out

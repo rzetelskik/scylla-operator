@@ -1,0 +1,33 @@
+NAME                                                                DATA   AGE
+configmap/example-grafana-configs                                   1      6m5s
+configmap/example-grafana-provisioning                              6      6m5s
+configmap/example-grafana-scylladb-dashboards                       8      6m5s
+configmap/example-grafana-serving-ca                                1      6m5s
+configmap/example-prometheus-client-ca                              1      6m5s
+configmap/example-prometheus-serving-ca                             1      6m5s
+configmap/kube-root-ca.crt                                          1      8m8s
+configmap/nodeconfig-podinfo-2876995c-72c6-48a0-8a29-17d0213991fe   1      2m52s
+configmap/nodeconfig-podinfo-5a6da65e-cd85-4bed-82e8-d88f537fb8e2   1      5m3s
+configmap/nodeconfig-podinfo-ebeb98a0-39ad-4309-9ac8-255e59a7dea1   1      7m48s
+configmap/prometheus-example-rulefiles-0                            2      6m5s
+configmap/scylla-config                                             1      7m58s
+configmap/scylla-local-client-ca                                    1      7m49s
+configmap/scylla-local-serving-ca                                   1      7m49s
+
+NAME                                               TYPE                DATA   AGE
+secret/example-grafana-admin-credentials           Opaque              2      6m5s
+secret/example-grafana-serving-ca                  kubernetes.io/tls   2      6m5s
+secret/example-grafana-serving-certs               kubernetes.io/tls   2      6m5s
+secret/example-prometheus-client-ca                kubernetes.io/tls   2      6m5s
+secret/example-prometheus-client-grafana           kubernetes.io/tls   2      6m5s
+secret/example-prometheus-serving-ca               kubernetes.io/tls   2      6m5s
+secret/example-prometheus-serving-certs            kubernetes.io/tls   2      6m5s
+secret/prometheus-example                          Opaque              1      6m5s
+secret/prometheus-example-tls-assets-0             Opaque              0      6m5s
+secret/prometheus-example-web-config               Opaque              1      6m5s
+secret/scylla-auth-token                           Opaque              1      7m49s
+secret/scylla-local-client-ca                      kubernetes.io/tls   2      7m49s
+secret/scylla-local-cql-connection-configs-admin   Opaque              0      7m39s
+secret/scylla-local-serving-ca                     kubernetes.io/tls   2      7m49s
+secret/scylla-local-serving-certs                  kubernetes.io/tls   2      7m39s
+secret/scylla-local-user-admin                     kubernetes.io/tls   2      7m49s

@@ -1,0 +1,25 @@
+[36mapiVersion[0m:[32m scylla.scylladb.com/v1alpha1[0m
+[32m[0m[36mkind[0m:[32m NodeConfig[0m
+[32m[0m[36mmetadata[0m:[36m[0m
+[36m  name[0m:[32m cluster[0m
+[32m[0m[36mspec[0m:[36m[0m
+[36m  localDiskSetup[0m:[36m[0m
+[36m    filesystems[0m:
+      -[36m device[0m:[32m /dev/md/nvmes[0m
+[32m        [0m[36mtype[0m:[32m xfs[0m
+[32m    [0m[36mmounts[0m:
+      -[36m device[0m:[32m /dev/md/nvmes[0m
+[32m        [0m[36mmountPoint[0m:[32m /mnt/persistent-volumes[0m
+[32m        [0m[36munsupportedOptions[0m:
+          -[32m prjquota[0m
+[32m    [0m[36mraids[0m:
+      -[36m name[0m:[32m nvmes[0m
+[32m        [0m[36mtype[0m:[32m RAID0[0m
+[32m        [0m[36mRAID0[0m:[36m[0m
+[36m          devices[0m:[36m[0m
+[36m            nameRegex[0m:[32m ^/dev/nvme\d+n\d+$[0m
+[32m  [0m[36mplacement[0m:[36m[0m
+[36m    nodeSelector[0m:[36m[0m
+[36m      scylla.scylladb.com/node-type[0m:[32m scylla[0m
+[32m    [0m[36mtolerations[0m:
+      -[36m effect[0m:[32m NoSchedule[0m

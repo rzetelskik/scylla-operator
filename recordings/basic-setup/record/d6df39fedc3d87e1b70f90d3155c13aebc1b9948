@@ -1,0 +1,2 @@
+customresourcedefinition.apiextensions.k8s.io/certificates.cert-manager.io condition met
+customresourcedefinition.apiextensions.k8s.io/issuers.cert-manager.io condition met

@@ -1,0 +1,14 @@
+customresourcedefinition.apiextensions.k8s.io/alertmanagerconfigs.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/alertmanagers.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/podmonitors.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/probes.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/prometheuses.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/prometheusrules.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/servicemonitors.monitoring.coreos.com serverside-applied
+customresourcedefinition.apiextensions.k8s.io/thanosrulers.monitoring.coreos.com serverside-applied
+namespace/prometheus-operator serverside-applied
+clusterrole.rbac.authorization.k8s.io/prometheus-operator serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/prometheus-operator serverside-applied
+serviceaccount/prometheus-operator serverside-applied
+service/prometheus-operator serverside-applied
+deployment.apps/prometheus-operator serverside-applied

@@ -1,0 +1,3 @@
+Waiting for deployment "scylla-manager" rollout to finish: 0 of 1 updated replicas are available...
+deployment "scylla-manager" successfully rolled out
+deployment "scylla-manager-controller" successfully rolled out

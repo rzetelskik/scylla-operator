@@ -1,0 +1,12 @@
+clusterrole.rbac.authorization.k8s.io/scylladb:controller:manager-controller serverside-applied
+clusterrole.rbac.authorization.k8s.io/scylladb:controller:aggregate-to-manager-controller serverside-applied
+namespace/scylla-manager serverside-applied
+poddisruptionbudget.policy/scylla-manager-controller serverside-applied
+serviceaccount/scylla-manager-controller serverside-applied
+configmap/scylla-manager-config serverside-applied
+service/scylla-manager serverside-applied
+serviceaccount/scylla-manager serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/scylladb:controller:manager-controller serverside-applied
+deployment.apps/scylla-manager-controller serverside-applied
+deployment.apps/scylla-manager serverside-applied
+scyllacluster.scylla.scylladb.com/scylla-manager-cluster serverside-applied

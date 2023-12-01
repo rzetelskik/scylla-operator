@@ -1,0 +1,25 @@
+[36mapiVersion[0m:[32m scylla.scylladb.com/v1[0m
+[32m[0m[36mkind[0m:[32m ScyllaCluster[0m
+[32m[0m[36mmetadata[0m:[36m[0m
+[36m  name[0m:[32m scylla[0m
+[32m[0m[36mspec[0m:[36m[0m
+[36m  version[0m:[32m 5.2.7[0m
+[32m  [0m[36magentVersion[0m:[32m 3.1.0[0m
+[32m  [0m[36mdeveloperMode[0m:[95m true[0m
+[95m  [0m[36mautomaticOrphanedNodeCleanup[0m:[95m true[0m
+[95m  [0m[36msysctls[0m:
+    -[32m "fs.aio-max-nr=30000000"[0m[36m[0m
+[36m  datacenter[0m:[36m[0m
+[36m    name[0m:[32m us-east-1[0m
+[32m    [0m[36mracks[0m:
+      -[36m name[0m:[32m us-east-1a[0m
+[32m        [0m[36mmembers[0m:[95m 1[0m
+[95m        [0m[36mstorage[0m:[36m[0m
+[36m          capacity[0m:[32m 500Mi[0m
+[32m        [0m[36mresources[0m:[36m[0m
+[36m          requests[0m:[36m[0m
+[36m            cpu[0m:[32m 10m[0m
+[32m            [0m[36mmemory[0m:[32m 100Mi[0m
+[32m          [0m[36mlimits[0m:[36m[0m
+[36m            cpu[0m:[95m 1[0m
+[95m            [0m[36mmemory[0m:[32m 1Gi[0m

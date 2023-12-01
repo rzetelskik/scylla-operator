@@ -1,0 +1,9 @@
+[36mapiVersion[0m:[32m v1[0m
+[32m[0m[36mkind[0m:[32m ConfigMap[0m
+[32m[0m[36mmetadata[0m:[36m[0m
+[36m  name[0m:[32m scylla-config[0m
+[32m[0m[36mdata[0m:[36m[0m
+[36m  scylla.yaml[0m: |
+[32m    authenticator: PasswordAuthenticator[0m
+[32m    authorizer: CassandraAuthorizer[0m
+[32m[0m

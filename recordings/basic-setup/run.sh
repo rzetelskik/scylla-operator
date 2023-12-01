@@ -16,6 +16,10 @@ CUSTOM_ECHO_MIN_SLEEP_SEC="${CUSTOM_ECHO_MIN_SLEEP_SEC:-2}"
 CUSTOM_COMMAND_SLEEP_SEC="${CUSTOM_COMMAND_SLEEP_SEC:-1}"
 CUSTOM_WATCH_FINISH_SLEEP_SEC="${CUSTOM_WATCH_FINISH_SLEEP_SEC:-5}"
 SKIP_MANUAL_SLEEPS="${SKIP_MANUAL_SLEEPS:-"false"}"
+SKIP_COMMENTS="${SKIP_COMMENTS:-"false"}"
+INTERACTIVE="${INTERACTIVE:-"false"}"
+RECORD=${RECORD:-"false"}
+REPLAY=${REPLAY:-"false"}
 
 function print-ps1() {
   echo -n "${CUSTOM_PS1@P}"
@@ -35,13 +39,40 @@ function user-echo() {
 
   sleep "${CUSTOM_ECHO_SLEEP_SEC}"
   wait "${min_sleep_pid}"
-  echo
 }
 
+function replay() {
+  trap 'tput cnorm' EXIT
+  tput civis
+  while read -r -N1 character; do
+    echo -n "$character"
+    sleep "0.00001"
+  done < "${1}"
+}
+
+run_count=0
 function run {
+  run_count=$((run_count + 1))
+
   cmd=$( cat )
+  if [[ "${SKIP_COMMENTS}" == "true" && "${cmd::1}" == "#" ]]; then
+    return
+  fi
+
   user-echo "${cmd}"
-  eval "${cmd}"
+  if [[ "${INTERACTIVE}" == "true" ]]; then
+    read -rs < /dev/tty
+  fi
+  echo
+
+  hash="$( echo "${cmd}_${run_count}" | sha1sum - | cut -f 1 -d " " )"
+  if [[ "${REPLAY}" == "true" && "${cmd::1}" != "#" ]]; then
+    replay "${RECORDING_DIR}/${hash}"
+  elif [[ "${RECORD}" == "true" && "${cmd::1}" != "#" ]]; then
+    eval "${cmd}" &>"${RECORDING_DIR}/${hash}"
+  else
+    eval "${cmd}"
+  fi
   sleep "${CUSTOM_COMMAND_SLEEP_SEC}"
 }
 
@@ -51,13 +82,25 @@ function sleep-extra {
   fi
 }
 
+if [[ "${RECORD}" == "true" && "${REPLAY}" == "true" ]]; then
+  echo "RECORD and REPLAY are mutually exclusive" > /dev/stderr
+  exit 1
+fi
+
+if [[ ("${RECORD}" == "true" || "${REPLAY}" == "true") && -z "${RECORDING_DIR+x}" ]]; then
+    echo "RECORDING_DIR can't be empty if either RECORD or REPLAY are true" > /dev/stderr
+    exit 1
+fi
+
+RECORDING_DIR=$( realpath "${RECORDING_DIR}" )
+
 if [[ -z "${SCYLLA_OPERATOR_REPO+x}" ]]; then
   cd "${tmpdir}"
 
-run <<< "# We'll start by cloning the Scylla Operator repository."
-run <<< "# Note: For production deployments, you should always use a stable (fixed) tag and only update the image along with the new manifests. Rolling tags, like latest, may lead to your manifests and operator image getting out of sync and break the deployment."
-run <<'EOF'
-git clone --depth=1 --branch=master https://github.com/scylladb/scylla-operator.git
+  run <<< "# We'll start by cloning the Scylla Operator repository."
+  run <<< "# Note: For production deployments, you should always use a stable (fixed) tag and only update the image along with the new manifests. Rolling tags, like latest, may lead to your manifests and operator image getting out of sync and break the deployment."
+  run <<'EOF'
+git clone --depth=1 --branch=master --progress https://github.com/scylladb/scylla-operator.git
 EOF
   run <<'EOF'
 cd scylla-operator
@@ -221,7 +264,10 @@ run <<'EOF'
 monitoring_manifest="$( mktemp )"
 EOF
 run <<'EOF'
-yq -e eval '. | .spec.endpointsSelector.matchLabels["scylla/cluster"] = "scylla" | .spec.components.grafana.exposeOptions.webInterface.ingress.dnsDomains = ["example-grafana.demo.svc.cluster.local"]' ./examples/monitoring/v1alpha1/scylladbmonitoring.yaml | tee "${monitoring_manifest}" | yq -e eval --colors '.' | head -n 25
+yq -e eval '. | .spec.endpointsSelector.matchLabels["scylla/cluster"] = "scylla" | .spec.components.grafana.exposeOptions.webInterface.ingress.dnsDomains = ["example-grafana.demo.svc.cluster.local"]' ./examples/monitoring/v1alpha1/scylladbmonitoring.yaml | tee "${monitoring_manifest}" | yq -e eval --colors '.'
+EOF
+run <<'EOF'
+yq -e eval --colors '.' "${monitoring_manifest}" | head -n 25
 EOF
 run <<'EOF'
 kubectl -n=demo apply --server-side -f="${monitoring_manifest}"
