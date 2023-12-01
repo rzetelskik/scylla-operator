@@ -267,9 +267,6 @@ run <<'EOF'
 yq -e eval '. | .spec.endpointsSelector.matchLabels["scylla/cluster"] = "scylla" | .spec.components.grafana.exposeOptions.webInterface.ingress.dnsDomains = ["example-grafana.demo.svc.cluster.local"]' ./examples/monitoring/v1alpha1/scylladbmonitoring.yaml | tee "${monitoring_manifest}" | yq -e eval --colors '.'
 EOF
 run <<'EOF'
-yq -e eval --colors '.' "${monitoring_manifest}" | head -n 25
-EOF
-run <<'EOF'
 kubectl -n=demo apply --server-side -f="${monitoring_manifest}"
 EOF
 run <<< "# Wait for the ScyllaDBMonitoring to roll out."
