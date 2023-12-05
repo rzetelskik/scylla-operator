@@ -1,14 +1,14 @@
 NAME                                                                DATA   AGE
-configmap/kube-root-ca.crt                                          1      105s
-configmap/nodeconfig-podinfo-ebeb98a0-39ad-4309-9ac8-255e59a7dea1   1      85s
-configmap/scylla-config                                             1      95s
-configmap/scylla-local-client-ca                                    1      86s
-configmap/scylla-local-serving-ca                                   1      86s
+configmap/kube-root-ca.crt                                          1      115s
+configmap/nodeconfig-podinfo-b2466281-afc7-41c6-ae5c-12735f2e93a6   1      95s
+configmap/scylla-config                                             1      106s
+configmap/scylla-local-client-ca                                    1      96s
+configmap/scylla-local-serving-ca                                   1      96s
 
 NAME                                               TYPE                DATA   AGE
-secret/scylla-auth-token                           Opaque              1      86s
-secret/scylla-local-client-ca                      kubernetes.io/tls   2      86s
-secret/scylla-local-cql-connection-configs-admin   Opaque              0      76s
-secret/scylla-local-serving-ca                     kubernetes.io/tls   2      86s
-secret/scylla-local-serving-certs                  kubernetes.io/tls   2      76s
-secret/scylla-local-user-admin                     kubernetes.io/tls   2      86s
+secret/scylla-auth-token                           Opaque              1      96s
+secret/scylla-local-client-ca                      kubernetes.io/tls   2      96s
+secret/scylla-local-cql-connection-configs-admin   Opaque              0      86s
+secret/scylla-local-serving-ca                     kubernetes.io/tls   2      96s
+secret/scylla-local-serving-certs                  kubernetes.io/tls   2      86s
+secret/scylla-local-user-admin                     kubernetes.io/tls   2      96s

@@ -1,0 +1,19 @@
+NAME                                       AGE
+scyllacluster.scylla.scylladb.com/scylla   7m54s
+
+NAME                                           READY   AGE
+statefulset.apps/prometheus-example            1/1     6m3s
+statefulset.apps/scylla-us-east-1-us-east-1a   3/3     7m54s
+
+NAME                                   READY   STATUS    RESTARTS   AGE
+pod/example-grafana-584c7f9f45-2t744   1/1     Running   0          6m3s
+pod/prometheus-example-0               2/2     Running   0          6m3s
+pod/scylla-us-east-1-us-east-1a-0      2/2     Running   0          7m54s
+pod/scylla-us-east-1-us-east-1a-1      2/2     Running   0          5m2s
+pod/scylla-us-east-1-us-east-1a-2      2/2     Running   0          2m51s
+
+NAME                                                            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS         AGE
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-0        Bound    pvc-a6af2354-0eb1-456e-87a4-cf898cd63bc1   500Mi      RWO            scylladb-local-xfs   7m54s
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-1        Bound    pvc-4702401c-cc98-4b0a-a533-4aaf6cabc00f   500Mi      RWO            scylladb-local-xfs   5m2s
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-2        Bound    pvc-4acbfe8c-6098-4c1f-b8f9-4b99c3c7c342   500Mi      RWO            scylladb-local-xfs   2m51s
+persistentvolumeclaim/example-prometheus-prometheus-example-0   Bound    pvc-600461f3-d8d1-435e-8abf-f8e97acb0745   1Gi        RWO            scylladb-local-xfs   6m3s

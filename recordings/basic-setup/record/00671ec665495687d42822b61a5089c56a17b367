@@ -3,8 +3,8 @@
 [32m[0m[36mmetadata[0m:[36m[0m
 [36m  name[0m:[32m scylla[0m
 [32m[0m[36mspec[0m:[36m[0m
-[36m  version[0m:[32m 5.2.7[0m
-[32m  [0m[36magentVersion[0m:[32m 3.1.0[0m
+[36m  agentVersion[0m:[32m 3.1.0[0m
+[32m  [0m[36mversion[0m:[32m 5.2.11[0m
 [32m  [0m[36mdeveloperMode[0m:[95m true[0m
 [95m  [0m[36mautomaticOrphanedNodeCleanup[0m:[95m true[0m
 [95m  [0m[36msysctls[0m:

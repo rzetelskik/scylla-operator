@@ -1,11 +1,11 @@
 NAME                                       AGE
-scyllacluster.scylla.scylladb.com/scylla   83s
+scyllacluster.scylla.scylladb.com/scylla   93s
 
 NAME                                           READY   AGE
-statefulset.apps/scylla-us-east-1-us-east-1a   1/1     83s
+statefulset.apps/scylla-us-east-1-us-east-1a   1/1     93s
 
 NAME                                READY   STATUS    RESTARTS   AGE
-pod/scylla-us-east-1-us-east-1a-0   2/2     Running   0          83s
+pod/scylla-us-east-1-us-east-1a-0   2/2     Running   0          93s
 
 NAME                                                       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS         AGE
-persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-0   Bound    pvc-96e97895-43de-476d-abb0-54a622bb6488   500Mi      RWO            scylladb-local-xfs   83s
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-0   Bound    pvc-a6af2354-0eb1-456e-87a4-cf898cd63bc1   500Mi      RWO            scylladb-local-xfs   93s
