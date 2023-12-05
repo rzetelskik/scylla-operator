@@ -1,2 +1,2 @@
-NAME              TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
-example-grafana   ClusterIP   10.98.16.7   <none>        3000/TCP   34s
+NAME              TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+example-grafana   ClusterIP   10.111.246.118   <none>        3000/TCP   34s

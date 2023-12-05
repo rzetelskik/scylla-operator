@@ -1,19 +1,19 @@
 NAME                                       AGE
-scyllacluster.scylla.scylladb.com/scylla   7m54s
+scyllacluster.scylla.scylladb.com/scylla   7m44s
 
 NAME                                           READY   AGE
-statefulset.apps/prometheus-example            1/1     6m3s
-statefulset.apps/scylla-us-east-1-us-east-1a   3/3     7m54s
+statefulset.apps/prometheus-example            1/1     5m58s
+statefulset.apps/scylla-us-east-1-us-east-1a   3/3     7m43s
 
 NAME                                   READY   STATUS    RESTARTS   AGE
-pod/example-grafana-584c7f9f45-2t744   1/1     Running   0          6m3s
-pod/prometheus-example-0               2/2     Running   0          6m3s
-pod/scylla-us-east-1-us-east-1a-0      2/2     Running   0          7m54s
-pod/scylla-us-east-1-us-east-1a-1      2/2     Running   0          5m2s
-pod/scylla-us-east-1-us-east-1a-2      2/2     Running   0          2m51s
+pod/example-grafana-584c7f9f45-4m5f9   1/1     Running   0          5m58s
+pod/prometheus-example-0               2/2     Running   0          5m58s
+pod/scylla-us-east-1-us-east-1a-0      2/2     Running   0          7m43s
+pod/scylla-us-east-1-us-east-1a-1      2/2     Running   0          5m3s
+pod/scylla-us-east-1-us-east-1a-2      2/2     Running   0          2m52s
 
 NAME                                                            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS         AGE
-persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-0        Bound    pvc-a6af2354-0eb1-456e-87a4-cf898cd63bc1   500Mi      RWO            scylladb-local-xfs   7m54s
-persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-1        Bound    pvc-4702401c-cc98-4b0a-a533-4aaf6cabc00f   500Mi      RWO            scylladb-local-xfs   5m2s
-persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-2        Bound    pvc-4acbfe8c-6098-4c1f-b8f9-4b99c3c7c342   500Mi      RWO            scylladb-local-xfs   2m51s
-persistentvolumeclaim/example-prometheus-prometheus-example-0   Bound    pvc-600461f3-d8d1-435e-8abf-f8e97acb0745   1Gi        RWO            scylladb-local-xfs   6m3s
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-0        Bound    pvc-9f5ee71f-f903-4c19-b02d-5afd88573ddd   500Mi      RWO            scylladb-local-xfs   7m43s
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-1        Bound    pvc-867cfa3d-3c4d-47e6-8e57-92f66714c987   500Mi      RWO            scylladb-local-xfs   5m3s
+persistentvolumeclaim/data-scylla-us-east-1-us-east-1a-2        Bound    pvc-f19daa76-eeb5-4ddf-a598-7b18499f7ba8   500Mi      RWO            scylladb-local-xfs   2m52s
+persistentvolumeclaim/example-prometheus-prometheus-example-0   Bound    pvc-4b7bc452-6fd2-4405-bb34-73199840e36d   1Gi        RWO            scylladb-local-xfs   5m58s

@@ -5,5 +5,3 @@ clusterrole.rbac.authorization.k8s.io/scylladb:csi-external-provisioner serversi
 clusterrolebinding.rbac.authorization.k8s.io/scylladb:csi-external-provisioner serverside-applied
 storageclass.storage.k8s.io/scylladb-local-xfs serverside-applied
 daemonset.apps/local-csi-driver serverside-applied
-deployment "scylla-operator" successfully rolled out
-deployment "webhook-server" successfully rolled out
