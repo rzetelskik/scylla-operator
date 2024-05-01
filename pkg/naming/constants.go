@@ -26,6 +26,12 @@ const (
 	// Readiness check will always fail when this label is added to member service.
 	NodeMaintenanceLabel = "scylla/node-maintenance"
 
+	// TODO: comment
+	NodeDelayedStorageAnnotation = "internal.scylla-operator.scylladb.com/delayed-storage"
+
+	// TODO: comment
+	NodeDelayedStorageMountedAnnotation = "internal.scylla-operator.scylladb.com/delayed-storage-mounted"
+
 	LabelValueTrue  = "true"
 	LabelValueFalse = "false"
 )

@@ -20,6 +20,7 @@ type Prober struct {
 	namespace     string
 	serviceName   string
 	serviceLister corev1.ServiceLister
+	podLister     corev1.PodLister
 	timeout       time.Duration
 }
 
@@ -27,17 +28,31 @@ func NewProber(
 	namespace string,
 	serviceName string,
 	serviceLister corev1.ServiceLister,
+	podLister corev1.PodLister,
 ) *Prober {
 	return &Prober{
 		namespace:     namespace,
 		serviceName:   serviceName,
 		serviceLister: serviceLister,
+		podLister:     podLister,
 		timeout:       60 * time.Second,
 	}
 }
 
 func (p *Prober) serviceRef() string {
 	return fmt.Sprintf("%s/%s", p.namespace, p.serviceName)
+}
+
+func (p *Prober) isNodeAwaitingDelayedStorage() (bool, error) {
+	pod, err := p.podLister.Pods(p.namespace).Get(p.serviceName)
+	if err != nil {
+		return false, err
+	}
+
+	_, hasDelayedStorageAnnotation := pod.Annotations[naming.NodeDelayedStorageAnnotation]
+	_, hasDelayedStorageMountedAnnotation := pod.Annotations[naming.NodeDelayedStorageMountedAnnotation]
+
+	return hasDelayedStorageAnnotation && !hasDelayedStorageMountedAnnotation, nil
 }
 
 func (p *Prober) isNodeUnderMaintenance() (bool, error) {
@@ -53,6 +68,19 @@ func (p *Prober) isNodeUnderMaintenance() (bool, error) {
 func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	awaitingDelayedStorage, err := p.isNodeAwaitingDelayedStorage()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.ErrorS(err, "readyz probe: can't look up pod's delayed storage annotations", "Pod", naming.ManualRef(p.namespace, p.serviceName), "Service", p.serviceRef())
+		return
+	}
+
+	if awaitingDelayedStorage {
+		w.WriteHeader(http.StatusOK)
+		klog.V(2).InfoS("readyz probe: node is awaiting delayed storage", "Service", p.serviceRef())
+		return
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {
@@ -117,6 +145,19 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	awaitingDelayedStorage, err := p.isNodeAwaitingDelayedStorage()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.ErrorS(err, "readyz probe: can't look up pod's delayed storage annotations", "Pod", naming.ManualRef(p.namespace, p.serviceName), "Service", p.serviceRef())
+		return
+	}
+
+	if awaitingDelayedStorage {
+		w.WriteHeader(http.StatusOK)
+		klog.ErrorS(err, "readyz probe: node is awaiting delayed storage", "Service", p.serviceRef())
+		return
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {

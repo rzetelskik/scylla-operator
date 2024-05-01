@@ -193,10 +193,13 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 
 	singleServiceInformer := singleServiceKubeInformers.Core().V1().Services()
 
+	singlePodInformer := singleServiceKubeInformers.Core().V1().Pods()
+
 	prober := sidecar.NewProber(
 		o.Namespace,
 		o.ServiceName,
 		singleServiceInformer.Lister(),
+		singlePodInformer.Lister(),
 	)
 
 	sc, err := sidecarcontroller.NewController(
@@ -217,30 +220,6 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 	if !cache.WaitForCacheSync(ctx.Done(), singleServiceInformer.Informer().HasSynced) {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
-
-	// Wait for the service that holds identity for this scylla node.
-	klog.V(2).InfoS("Waiting for Service availability and IP address", "Service", naming.ManualRef(o.Namespace, o.ServiceName))
-	service, err := controllerhelpers.WaitForServiceState(
-		ctx,
-		o.kubeClient.CoreV1().Services(o.Namespace),
-		o.ServiceName,
-		controllerhelpers.WaitForStateOptions{},
-		func(service *corev1.Service) (bool, error) {
-			if o.clientsBroadcastAddressType == scyllav1.BroadcastAddressTypeServiceLoadBalancerIngress ||
-				o.nodesBroadcastAddressType == scyllav1.BroadcastAddressTypeServiceLoadBalancerIngress {
-				if len(service.Status.LoadBalancer.Ingress) == 0 {
-					klog.V(4).InfoS("LoadBalancer Service is awaiting for public endpoint")
-					return false, nil
-				}
-			}
-
-			return true, nil
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("can't wait for service %q: %w", naming.ManualRef(o.Namespace, o.ServiceName), err)
-	}
-
 	// Wait for this Pod to have ContainerID set.
 	klog.V(2).InfoS("Waiting for Pod to have IP address assigned and scylla ContainerID set", "Pod", naming.ManualRef(o.Namespace, o.ServiceName))
 	var containerID string
@@ -271,6 +250,29 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 	)
 	if err != nil {
 		return fmt.Errorf("can't wait for pod's ContainerID: %w", err)
+	}
+
+	// Wait for the service that holds identity for this scylla node.
+	klog.V(2).InfoS("Waiting for Service availability and IP address", "Service", naming.ManualRef(o.Namespace, o.ServiceName))
+	service, err := controllerhelpers.WaitForServiceState(
+		ctx,
+		o.kubeClient.CoreV1().Services(o.Namespace),
+		o.ServiceName,
+		controllerhelpers.WaitForStateOptions{},
+		func(service *corev1.Service) (bool, error) {
+			if o.clientsBroadcastAddressType == scyllav1.BroadcastAddressTypeServiceLoadBalancerIngress ||
+				o.nodesBroadcastAddressType == scyllav1.BroadcastAddressTypeServiceLoadBalancerIngress {
+				if len(service.Status.LoadBalancer.Ingress) == 0 {
+					klog.V(4).InfoS("LoadBalancer Service is awaiting for public endpoint")
+					return false, nil
+				}
+			}
+
+			return true, nil
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("can't wait for service %q: %w", naming.ManualRef(o.Namespace, o.ServiceName), err)
 	}
 
 	member, err := identity.NewMember(service, pod, o.nodesBroadcastAddressType, o.clientsBroadcastAddressType)
@@ -354,8 +356,6 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		return fmt.Errorf("can't wait for optimization: %w", err)
 	}
 
-	klog.V(2).InfoS("Starting scylla")
-
 	cfg := config.NewScyllaConfig(member, o.kubeClient, o.scyllaClient, o.CPUCount, o.ExternalSeeds)
 	scyllaCmd, err := cfg.Setup(ctx)
 	if err != nil {
@@ -417,6 +417,36 @@ func (o *SidecarOptions) Run(streams genericclioptions.IOStreams, cmd *cobra.Com
 		defer wg.Done()
 		sc.Run(ctx)
 	}()
+
+	// TODO: wait for storage here
+
+	pod, err = singlePodInformer.Lister().Pods(o.Namespace).Get(o.ServiceName)
+	if err != nil {
+		return fmt.Errorf("can't get pod %q: %w", naming.ManualRef(o.Namespace, o.ServiceName), err)
+	}
+
+	_, hasDelayedStorageAnnotation := pod.Annotations[naming.NodeDelayedStorageAnnotation]
+	if hasDelayedStorageAnnotation {
+
+		// Wait for this Pod to have delayed storage mounted.
+		klog.V(2).InfoS("Waiting for Pod to have delayed storage mounted", "Pod", naming.ObjRef(pod))
+		_, err = controllerhelpers.WaitForPodState(
+			ctx,
+			o.kubeClient.CoreV1().Pods(o.Namespace),
+			o.ServiceName,
+			controllerhelpers.WaitForStateOptions{},
+			func(pod *corev1.Pod) (bool, error) {
+				_, hasDelayedStorageMountedAnnotation := pod.Annotations[naming.NodeDelayedStorageMountedAnnotation]
+
+				return hasDelayedStorageMountedAnnotation, nil
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("can't wait for pod to have delayed storage mounted annotation: %w", err)
+		}
+	}
+
+	klog.V(2).InfoS("Starting scylla")
 
 	// Run scylla in a new process.
 	err = scyllaCmd.Start()
