@@ -20,8 +20,10 @@ trap gather-artifacts-on-exit EXIT
 SO_NODECONFIG_PATH="${SO_NODECONFIG_PATH=${parent_dir}/manifests/cluster/nodeconfig.yaml}"
 export SO_NODECONFIG_PATH
 
-# Make sure there is no default storage class before we create our own so we always use our own provisioner from the release.
-unset-default-storageclass
+if [[ -z "${SO_CSI_DRIVER_PATH}" && -n "${SO_CSI_DRIVER_PATH+x}" ]]; then
+  # Make sure there is no default storage class before we create our own so we always use our own provisioner from the release.
+  unset-default-storageclass
+fi
 
 SCYLLA_OPERATOR_FEATURE_GATES="${SCYLLA_OPERATOR_FEATURE_GATES:-AllAlpha=true,AllBeta=true}"
 export SCYLLA_OPERATOR_FEATURE_GATES
