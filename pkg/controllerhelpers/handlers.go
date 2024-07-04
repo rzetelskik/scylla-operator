@@ -93,13 +93,13 @@ func (h *Handlers[T]) EnqueueAll(depth int, untypedObj kubeinterfaces.ObjectInte
 	h.EnqueueAllFunc(h.Enqueue)(depth+1, untypedObj, op)
 }
 
-func (h *Handlers[T]) EnqueueAllWithUntypedFilterFunc(filterFunc func(kubeinterfaces.ObjectInterface) bool) EnqueueFuncType {
+func (h *Handlers[T]) EnqueueWithUntypedFilterFunc(filterFunc func(kubeinterfaces.ObjectInterface) bool) EnqueueFuncType {
 	return func(depth int, untypedObj kubeinterfaces.ObjectInterface, op HandlerOperationType) {
 		if !filterFunc(untypedObj) {
 			return
 		}
 
-		h.EnqueueAll(depth+1, untypedObj, op)
+		h.Enqueue(depth+1, untypedObj, op)
 	}
 }
 

@@ -227,7 +227,7 @@ func (ncc *Controller) deleteDaemonSet(obj interface{}) {
 func (ncc *Controller) addNamespace(obj interface{}) {
 	ncc.handlers.HandleAdd(
 		obj.(*corev1.Namespace),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
@@ -235,7 +235,7 @@ func (ncc *Controller) updateNamespace(old, cur interface{}) {
 	ncc.handlers.HandleUpdate(
 		old.(*corev1.Namespace),
 		cur.(*corev1.Namespace),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 		ncc.deleteNamespace,
 	)
 }
@@ -243,14 +243,14 @@ func (ncc *Controller) updateNamespace(old, cur interface{}) {
 func (ncc *Controller) deleteNamespace(obj interface{}) {
 	ncc.handlers.HandleDelete(
 		obj,
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
 func (ncc *Controller) addServiceAccount(obj interface{}) {
 	ncc.handlers.HandleAdd(
 		obj.(*corev1.ServiceAccount),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
@@ -258,7 +258,7 @@ func (ncc *Controller) updateServiceAccount(old, cur interface{}) {
 	ncc.handlers.HandleUpdate(
 		old.(*corev1.ServiceAccount),
 		cur.(*corev1.ServiceAccount),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 		ncc.deleteServiceAccount,
 	)
 }
@@ -266,14 +266,14 @@ func (ncc *Controller) updateServiceAccount(old, cur interface{}) {
 func (ncc *Controller) deleteServiceAccount(obj interface{}) {
 	ncc.handlers.HandleDelete(
 		obj,
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
 func (ncc *Controller) addClusterRoleBinding(obj interface{}) {
 	ncc.handlers.HandleAdd(
 		obj.(*rbacv1.ClusterRoleBinding),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
@@ -281,7 +281,7 @@ func (ncc *Controller) updateClusterRoleBinding(old, cur interface{}) {
 	ncc.handlers.HandleUpdate(
 		old.(*rbacv1.ClusterRoleBinding),
 		cur.(*rbacv1.ClusterRoleBinding),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 		ncc.deleteClusterRoleBinding,
 	)
 }
@@ -289,14 +289,14 @@ func (ncc *Controller) updateClusterRoleBinding(old, cur interface{}) {
 func (ncc *Controller) deleteClusterRoleBinding(obj interface{}) {
 	ncc.handlers.HandleDelete(
 		obj,
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
 func (ncc *Controller) addClusterRole(obj interface{}) {
 	ncc.handlers.HandleAdd(
 		obj.(*rbacv1.ClusterRole),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
@@ -304,7 +304,7 @@ func (ncc *Controller) updateClusterRole(old, cur interface{}) {
 	ncc.handlers.HandleUpdate(
 		old.(*rbacv1.ClusterRole),
 		cur.(*rbacv1.ClusterRole),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 		ncc.deleteClusterRole,
 	)
 }
@@ -312,7 +312,7 @@ func (ncc *Controller) updateClusterRole(old, cur interface{}) {
 func (ncc *Controller) deleteClusterRole(obj interface{}) {
 	ncc.handlers.HandleDelete(
 		obj,
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
@@ -342,7 +342,7 @@ func (ncc *Controller) deleteNodeConfig(obj interface{}) {
 func (ncc *Controller) addScyllaOperatorConfig(obj interface{}) {
 	ncc.handlers.HandleAdd(
 		obj.(*scyllav1alpha1.ScyllaOperatorConfig),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 	)
 }
 
@@ -350,7 +350,7 @@ func (ncc *Controller) updateScyllaOperatorConfig(old, cur interface{}) {
 	ncc.handlers.HandleUpdate(
 		old.(*scyllav1alpha1.ScyllaOperatorConfig),
 		cur.(*scyllav1alpha1.ScyllaOperatorConfig),
-		ncc.handlers.EnqueueAllWithUntypedFilterFunc(isManagedByNodeConfigController),
+		ncc.handlers.EnqueueAllFunc(ncc.handlers.EnqueueWithUntypedFilterFunc(isManagedByNodeConfigController)),
 		nil,
 	)
 }
