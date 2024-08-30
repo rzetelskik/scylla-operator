@@ -24,13 +24,13 @@ spec:
       - name: local-csi-driver
         securityContext:
           privileged: true
-        image: docker.io/scylladb/local-csi-driver:0.4.1@sha256:4da6cc8fc65f8983c3ff0d3f0f831c59ef013a04f9b2021615316aca7a790f16
-        imagePullPolicy: IfNotPresent
+        image: docker.io/rzetelskik/local-csi-driver:latest@sha256:b88f92a1df821002410783c7cdf962af9e01af84ceaf168fc72e177899c2bab1
+        imagePullPolicy: Always
         args:
         - --listen=/csi/csi.sock
         - --node-name=$(NODE_NAME)
         - --volumes-dir=/mnt/persistent-volumes
-        - --v=2
+        - --v=4
         env:
         - name: NODE_NAME
           valueFrom:

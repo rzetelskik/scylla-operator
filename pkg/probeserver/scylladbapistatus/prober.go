@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	delayedcsidrivernaming "github.com/rzetelskik/delayed-csi-driver/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/client-go/listers/core/v1"
@@ -20,6 +21,7 @@ type Prober struct {
 	namespace     string
 	serviceName   string
 	serviceLister corev1.ServiceLister
+	podLister     corev1.PodLister
 	timeout       time.Duration
 }
 
@@ -27,17 +29,29 @@ func NewProber(
 	namespace string,
 	serviceName string,
 	serviceLister corev1.ServiceLister,
+	podLister corev1.PodLister,
 ) *Prober {
 	return &Prober{
 		namespace:     namespace,
 		serviceName:   serviceName,
 		serviceLister: serviceLister,
+		podLister:     podLister,
 		timeout:       60 * time.Second,
 	}
 }
 
 func (p *Prober) serviceRef() string {
 	return fmt.Sprintf("%s/%s", p.namespace, p.serviceName)
+}
+
+func (p *Prober) doesNodeRequireDelayedVolumeMount() (bool, error) {
+	pod, err := p.podLister.Pods(p.namespace).Get(p.serviceName)
+	if err != nil {
+		return false, fmt.Errorf("can't get pod %q: %w", naming.ManualRef(p.namespace, p.serviceName), err)
+	}
+
+	_, hasLabel := pod.Labels[naming.DelayedVolumeMountLabel]
+	return hasLabel, nil
 }
 
 func (p *Prober) isNodeUnderMaintenance() (bool, error) {
@@ -50,9 +64,42 @@ func (p *Prober) isNodeUnderMaintenance() (bool, error) {
 	return hasLabel, nil
 }
 
+func (p *Prober) isDelayedVolumeMounted() (bool, error) {
+	pod, err := p.podLister.Pods(p.namespace).Get(p.serviceName)
+	if err != nil {
+		return false, fmt.Errorf("can't get pod %q: %w", naming.ManualRef(p.namespace, p.serviceName), err)
+	}
+
+	_, ok := pod.Annotations[fmt.Sprintf(delayedcsidrivernaming.DelayedStorageMountedAnnotationFormat, naming.PVCTemplateName)]
+	return ok, nil
+}
+
 func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	requiresDelayedVolumeMount, err := p.doesNodeRequireDelayedVolumeMount()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.ErrorS(err, "readyz probe: can't look up delayed volume mount label", "Pod", naming.ManualRef(p.namespace, p.serviceName))
+		return
+	}
+
+	if requiresDelayedVolumeMount {
+		isDelayedVolumeMounted, err := p.isDelayedVolumeMounted()
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			klog.ErrorS(err, "readyz probe: can't look up delayed volume mount annotation", "Pod", naming.ManualRef(p.namespace, p.serviceName))
+			return
+		}
+
+		if !isDelayedVolumeMounted {
+			// Claim readiness to spin up the entire STS.
+			w.WriteHeader(http.StatusOK)
+			klog.V(2).InfoS("readyz probe: node is waiting for delayed volume mount", "Pod", naming.ManualRef(p.namespace, p.serviceName))
+			return
+		}
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {
@@ -117,6 +164,28 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	requiresDelayedVolumeMount, err := p.doesNodeRequireDelayedVolumeMount()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.ErrorS(err, "readyz probe: can't look up delayed volume mount label", "Pod", naming.ManualRef(p.namespace, p.serviceName))
+		return
+	}
+
+	if requiresDelayedVolumeMount {
+		isDelayedVolumeMounted, err := p.isDelayedVolumeMounted()
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			klog.ErrorS(err, "readyz probe: can't look up delayed volume mount annotation", "Pod", naming.ManualRef(p.namespace, p.serviceName))
+			return
+		}
+
+		if !isDelayedVolumeMounted {
+			w.WriteHeader(http.StatusOK)
+			klog.V(2).InfoS("readyz probe: node is waiting for delayed volume mount", "Pod", naming.ManualRef(p.namespace, p.serviceName))
+			return
+		}
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {

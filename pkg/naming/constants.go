@@ -26,6 +26,8 @@ const (
 	// Readiness check will always fail when this label is added to member service.
 	NodeMaintenanceLabel = "scylla/node-maintenance"
 
+	DelayedVolumeMountLabel = "internal.scylla-operator.scylladb.com/delayed-volume-mount"
+
 	LabelValueTrue  = "true"
 	LabelValueFalse = "false"
 )

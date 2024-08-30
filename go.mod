@@ -32,6 +32,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/rzetelskik/delayed-csi-driver v0.0.0-00010101000000-000000000000
 	github.com/scylladb/go-set v1.0.2
 	github.com/scylladb/gocqlx/v2 v2.8.0
 	github.com/scylladb/scylla-manager/v3 v3.2.8
@@ -43,7 +44,7 @@ require (
 	go.uber.org/automaxprocs v1.5.3
 	go.uber.org/config v1.4.0
 	golang.org/x/oauth2 v0.18.0
-	golang.org/x/sys v0.19.0
+	golang.org/x/sys v0.20.0
 	google.golang.org/grpc v1.63.2
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.29.5
@@ -228,5 +229,6 @@ replace (
 	github.com/Azure/azure-storage-blob-go => github.com/Azure/azure-storage-blob-go v0.13.0
 	github.com/gocql/gocql => github.com/scylladb/gocql v1.13.0
 	github.com/rclone/rclone => github.com/scylladb/rclone v1.54.1-0.20240312172628-afe1fd2aa65e
+	github.com/rzetelskik/delayed-csi-driver => ../../rzetelskik/delayed-csi-driver
 	google.golang.org/api => github.com/scylladb/google-api-go-client v0.34.1-patched
 )
