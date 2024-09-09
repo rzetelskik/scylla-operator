@@ -1205,6 +1205,29 @@ spec:
                         type: array
                     type: object
                   type: array
+                certsSpec:
+                  default:
+                    type: OperatorManaged
+                  description: 'TODO: operator managed won''t be handled fully (additional IP addresses and dns names skipped)'
+                  properties:
+                    operatorManagedOptions:
+                      description: TODO
+                      type: object
+                    type:
+                      description: TODO
+                      enum:
+                        - OperatorManaged
+                        - UserManaged
+                      type: string
+                    userManagedOptions:
+                      description: TODO
+                      properties:
+                        clientCASecretName:
+                          type: string
+                        servingCASecretName:
+                          type: string
+                      type: object
+                  type: object
                 cpuset:
                   description: 'cpuset determines if the cluster will use cpu-pinning. Deprecated: `cpuset` is deprecated and may be ignored in the future.'
                   type: boolean
@@ -5358,7 +5381,7 @@ spec:
           value: docker.io/scylladb/scylla-operator:latest
         args:
         - operator
-        - --loglevel=2
+        - --loglevel=4
         resources:
           requests:
             cpu: 100m

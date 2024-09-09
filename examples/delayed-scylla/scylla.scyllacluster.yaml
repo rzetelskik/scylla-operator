@@ -2,6 +2,8 @@ apiVersion: scylla.scylladb.com/v1
 kind: ScyllaCluster
 metadata:
   name: scylla
+  labels:
+    internal.scylla-operator.scylladb.com/delayed-volume-mount: ""
 spec:
   agentVersion: 3.3.0@sha256:dc2684f51e961d88da5a8eac2d9f165cb7a960cbf91f67f49332e7224317c96b
   version: 6.1.1
@@ -9,6 +11,7 @@ spec:
   automaticOrphanedNodeCleanup: true
   sysctls:
     - fs.aio-max-nr=30000000
+  scyllaArgs: --cluster-name="scylla-cluster"
   datacenter:
     name: us-east-1
     racks:
@@ -16,7 +19,7 @@ spec:
         members: 1
         storage:
           capacity: 1Gi
-          storageClassName: scylladb-local-xfs
+          storageClassName: delayed
         resources:
           requests:
             cpu: 10m
@@ -24,23 +27,3 @@ spec:
           limits:
             cpu: 1
             memory: 1Gi
-#  certsSpec:
-#    type: UserManaged
-#    userManagedOptions:
-#      servingCASecretName: serving-ca
-#      clientCASecretName: client-ca
-#  dnsDomains:
-#  - "scylladb.nodes.scylladb.com"
-#  exposeOptions:
-#    nodeService:
-#      type: Headless
-#    broadcastOptions:
-#      nodes:
-#        type: PodIP
-#      clients:
-#        type: PodIP
-#    cql:
-#      ingress:
-#        ingressClassName: haproxy
-#        annotations:
-#          haproxy.org/ssl-passthrough: "true"

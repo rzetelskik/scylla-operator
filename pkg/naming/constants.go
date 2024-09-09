@@ -26,6 +26,17 @@ const (
 	// Readiness check will always fail when this label is added to member service.
 	NodeMaintenanceLabel = "scylla/node-maintenance"
 
+	// BEGIN: Delayed volume mounting
+
+	DelayedVolumeMountLabel = "internal.scylla-operator.scylladb.com/delayed-volume-mount"
+
+	OwnerKindLabel = "internal.scylla-operator.scylladb.com/owner-kind"
+	OwnerNameLabel = "internal.scylla-operator.scylladb.com/owner-name"
+
+	ScyllaDBClusterClaimNameAnnotation = "pausable-scylladb-operator.scylladb.com/scylladb-cluster-claim-name"
+
+	// END
+
 	LabelValueTrue  = "true"
 	LabelValueFalse = "false"
 )

@@ -399,7 +399,7 @@ func (scc *Controller) deleteService(obj interface{}) {
 func (scc *Controller) addSecret(obj interface{}) {
 	scc.handlers.HandleAdd(
 		obj.(*corev1.Secret),
-		scc.handlers.EnqueueOwner,
+		scc.enqueueSecretOwnerOrAllUsingItAsCA,
 	)
 }
 
@@ -407,16 +407,43 @@ func (scc *Controller) updateSecret(old, cur interface{}) {
 	scc.handlers.HandleUpdate(
 		old.(*corev1.Secret),
 		cur.(*corev1.Secret),
-		scc.handlers.EnqueueOwner,
+		scc.enqueueSecretOwnerOrAllUsingItAsCA,
 		scc.deleteSecret,
 	)
 }
 
 func (scc *Controller) deleteSecret(obj interface{}) {
 	scc.handlers.HandleDelete(
-		obj,
-		scc.handlers.EnqueueOwner,
+		obj.(*corev1.Secret),
+		scc.enqueueSecretOwnerOrAllUsingItAsCA,
 	)
+}
+
+func (scc *Controller) enqueueSecretOwnerOrAllUsingItAsCA(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	secret := obj.(*corev1.Secret)
+	klog.V(4).InfoS("enqueueSecretOwnerOrAllUsingItAsCA", "Secret", klog.KObj(secret))
+
+	sc := scc.resolveScyllaClusterController(secret)
+	if sc != nil {
+		klog.V(4).InfoS("enqueueSecretOwnerOrAllUsingItAsCA: will enqueue owner", "Secret", klog.KObj(secret), "Owner", klog.KObj(sc))
+		scc.handlers.Enqueue(depth+1, sc, op)
+		return
+	}
+
+	klog.V(4).InfoS("enqueueSecretOwnerOrAllUsingItAsCA: will try enqueueing all matching CAs", "Secret", klog.KObj(secret))
+
+	secretName := secret.GetName()
+
+	isCAOfScyllaCluster := func(sc *scyllav1.ScyllaCluster) bool {
+		if sc.GetNamespace() != secret.GetNamespace() || sc.Spec.CertsSpec == nil || sc.Spec.CertsSpec.Type != scyllav1.UserManagedCertManagementType {
+			return false
+		}
+
+		return sc.Spec.CertsSpec.UserManagedOptions.ServingCASecretName == secretName ||
+			sc.Spec.CertsSpec.UserManagedOptions.ClientCASecretName == secretName
+	}
+
+	scc.handlers.EnqueueAllFunc(scc.handlers.EnqueueWithFilterFunc(isCAOfScyllaCluster))(depth+1, obj, op)
 }
 
 func (scc *Controller) addConfigMap(obj interface{}) {

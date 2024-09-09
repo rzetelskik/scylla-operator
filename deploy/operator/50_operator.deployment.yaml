@@ -30,7 +30,7 @@ spec:
           value: docker.io/scylladb/scylla-operator:latest
         args:
         - operator
-        - --loglevel=2
+        - --loglevel=4
         resources:
           requests:
             cpu: 100m

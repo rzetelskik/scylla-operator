@@ -148,44 +148,126 @@ func (scc *Controller) syncCerts(
 
 	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
 		// Manage client certificates.
-		errs = append(errs, cm.ManageCertificates(
-			ctx,
-			time.Now,
-			&sc.ObjectMeta,
-			scyllaClusterControllerGVK,
-			&okubecrypto.CAConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalClientCAName(sc.Name),
-					Labels: clusterLabels,
+
+		switch sc.Spec.CertsSpec.Type {
+		case scyllav1.UserManagedCertManagementType:
+			klog.V(4).InfoS("Manage user managed client certificates: client CA")
+
+			if len(sc.Spec.CertsSpec.UserManagedOptions.ClientCASecretName) == 0 {
+				klog.V(4).InfoS("User managed client CA secret name is empty", "ScyllaCluster", klog.KObj(sc))
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               certControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             internalapi.ProgressingReason,
+					Message:            fmt.Sprintf("waiting for client CA secret name to be provided"),
+					ObservedGeneration: sc.Generation,
+				})
+
+				break
+			}
+
+			clientCASecretName := sc.Spec.CertsSpec.UserManagedOptions.ClientCASecretName
+			klog.V(4).InfoS("User managed client CA secret provided", "ScyllaCluster", klog.KObj(sc), "Secret", klog.KRef(sc.Namespace, clientCASecretName))
+
+			clientCASecret, err := scc.kubeClient.CoreV1().Secrets(sc.Namespace).Get(ctx, clientCASecretName, metav1.GetOptions{})
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					klog.V(4).InfoS("User managed client CA secret missing", "ScyllaCluster", klog.KObj(sc), "Secret", klog.KRef(sc.Namespace, clientCASecretName))
+					return progressingConditions, fmt.Errorf("can't get client CA secret %q: %w", naming.ManualRef(sc.Namespace, clientCASecretName), err)
+				}
+
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               certControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             internalapi.ProgressingReason,
+					Message:            fmt.Sprintf("waiting for client CA secret %q to be available", naming.ManualRef(sc.Namespace, clientCASecretName)),
+					ObservedGeneration: sc.Generation,
+				})
+
+				break
+			}
+
+			klog.V(4).InfoS("User managed client CA secret found", "ScyllaCluster", klog.KObj(sc), "Secret", klog.KObj(clientCASecret))
+
+			errs = append(errs, cm.ManageCertificatesWithSigningTLSSecretFunc(
+				ctx,
+				time.Now,
+				&sc.ObjectMeta,
+				scyllaClusterControllerGVK,
+				func(ctx context.Context, nowFunc func() time.Time) (*okubecrypto.SigningTLSSecret, error) {
+					tlsSecret := okubecrypto.NewTLSSecret(clientCASecret)
+					return okubecrypto.NewSigningTLSSecret(tlsSecret, nowFunc), nil
 				},
-				Validity: 10 * 365 * 24 * time.Hour,
-				Refresh:  8 * 365 * 24 * time.Hour,
-			},
-			&okubecrypto.CABundleConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalClientCAName(sc.Name),
-					Labels: clusterLabels,
-				},
-			},
-			[]*okubecrypto.CertificateConfig{
-				{
+				&okubecrypto.CABundleConfig{
 					MetaConfig: okubecrypto.MetaConfig{
-						Name:   naming.GetScyllaClusterLocalUserAdminCertName(sc.Name),
+						Name:   naming.GetScyllaClusterLocalClientCAName(sc.Name),
+						Labels: clusterLabels,
+					},
+				},
+				[]*okubecrypto.CertificateConfig{
+					{
+						MetaConfig: okubecrypto.MetaConfig{
+							Name:   naming.GetScyllaClusterLocalUserAdminCertName(sc.Name),
+							Labels: clusterLabels,
+						},
+						Validity: 10 * 365 * 24 * time.Hour,
+						Refresh:  8 * 365 * 24 * time.Hour,
+						CertCreator: (&ocrypto.ClientCertCreatorConfig{
+							Subject: pkix.Name{
+								CommonName: "",
+							},
+							DNSNames: []string{"admin"},
+						}).ToCreator(),
+					},
+				},
+				secrets,
+				configMaps,
+			))
+
+		case scyllav1.OperatorManagedCertManagementType:
+			errs = append(errs, cm.ManageCertificates(
+				ctx,
+				time.Now,
+				&sc.ObjectMeta,
+				scyllaClusterControllerGVK,
+				&okubecrypto.CAConfig{
+					MetaConfig: okubecrypto.MetaConfig{
+						Name:   naming.GetScyllaClusterLocalClientCAName(sc.Name),
 						Labels: clusterLabels,
 					},
 					Validity: 10 * 365 * 24 * time.Hour,
 					Refresh:  8 * 365 * 24 * time.Hour,
-					CertCreator: (&ocrypto.ClientCertCreatorConfig{
-						Subject: pkix.Name{
-							CommonName: "",
-						},
-						DNSNames: []string{"admin"},
-					}).ToCreator(),
 				},
-			},
-			secrets,
-			configMaps,
-		))
+				&okubecrypto.CABundleConfig{
+					MetaConfig: okubecrypto.MetaConfig{
+						Name:   naming.GetScyllaClusterLocalClientCAName(sc.Name),
+						Labels: clusterLabels,
+					},
+				},
+				[]*okubecrypto.CertificateConfig{
+					{
+						MetaConfig: okubecrypto.MetaConfig{
+							Name:   naming.GetScyllaClusterLocalUserAdminCertName(sc.Name),
+							Labels: clusterLabels,
+						},
+						Validity: 10 * 365 * 24 * time.Hour,
+						Refresh:  8 * 365 * 24 * time.Hour,
+						CertCreator: (&ocrypto.ClientCertCreatorConfig{
+							Subject: pkix.Name{
+								CommonName: "",
+							},
+							DNSNames: []string{"admin"},
+						}).ToCreator(),
+					},
+				},
+				secrets,
+				configMaps,
+			))
+
+		default:
+			errs = append(errs, fmt.Errorf("unsuported cert management type: %q", sc.Spec.CertsSpec.Type))
+
+		}
 	}
 
 	// Manage serving certificates.
@@ -348,45 +430,130 @@ func (scc *Controller) syncCerts(
 	}
 
 	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-		errs = append(errs, cm.ManageCertificates(
-			ctx,
-			time.Now,
-			&sc.ObjectMeta,
-			scyllaClusterControllerGVK,
-			&okubecrypto.CAConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalServingCAName(sc.Name),
-					Labels: clusterLabels,
+		// Manage serving certificates.
+
+		switch sc.Spec.CertsSpec.Type {
+		case scyllav1.UserManagedCertManagementType:
+			klog.V(4).InfoS("Manage user managed client certificates: serving CA")
+
+			if len(sc.Spec.CertsSpec.UserManagedOptions.ServingCASecretName) == 0 {
+				klog.V(4).InfoS("User managed serving CA secret name is empty", "ScyllaCluster", klog.KObj(sc))
+
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               certControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             internalapi.ProgressingReason,
+					Message:            fmt.Sprintf("waiting for serving CA secret name to be provided"),
+					ObservedGeneration: sc.Generation,
+				})
+
+				break
+			}
+
+			servingCASecretName := sc.Spec.CertsSpec.UserManagedOptions.ServingCASecretName
+			klog.V(4).InfoS("User managed serving CA secret provided", "ScyllaCluster", klog.KObj(sc), "Secret", klog.KRef(sc.Namespace, servingCASecretName))
+
+			servingCASecret, err := scc.kubeClient.CoreV1().Secrets(sc.Namespace).Get(ctx, servingCASecretName, metav1.GetOptions{})
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					klog.V(4).InfoS("User managed serving CA secret missing", "ScyllaCluster", klog.KObj(sc), "Secret", klog.KRef(sc.Namespace, servingCASecretName))
+					return progressingConditions, fmt.Errorf("can't get serving CA secret %q: %w", naming.ManualRef(sc.Namespace, servingCASecretName), err)
+				}
+
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               certControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             internalapi.ProgressingReason,
+					Message:            fmt.Sprintf("waiting for serving CA secret %q to be available", naming.ManualRef(sc.Namespace, servingCASecretName)),
+					ObservedGeneration: sc.Generation,
+				})
+
+				break
+			}
+
+			klog.V(4).InfoS("User managed serving CA secret found", "ScyllaCluster", klog.KObj(sc), "Secret", klog.KObj(servingCASecret))
+
+			errs = append(errs, cm.ManageCertificatesWithSigningTLSSecretFunc(
+				ctx,
+				time.Now,
+				&sc.ObjectMeta,
+				scyllaClusterControllerGVK,
+				func(ctx context.Context, nowFunc func() time.Time) (*okubecrypto.SigningTLSSecret, error) {
+					tlsSecret := okubecrypto.NewTLSSecret(servingCASecret)
+					return okubecrypto.NewSigningTLSSecret(tlsSecret, nowFunc), nil
 				},
-				Validity: 10 * 365 * 24 * time.Hour,
-				Refresh:  8 * 365 * 24 * time.Hour,
-			},
-			&okubecrypto.CABundleConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalServingCAName(sc.Name),
-					Labels: clusterLabels,
-				},
-			},
-			[]*okubecrypto.CertificateConfig{
-				{
+				&okubecrypto.CABundleConfig{
 					MetaConfig: okubecrypto.MetaConfig{
-						Name:   naming.GetScyllaClusterLocalServingCertName(sc.Name),
+						Name:   naming.GetScyllaClusterLocalServingCAName(sc.Name),
 						Labels: clusterLabels,
 					},
-					Validity: 30 * 24 * time.Hour,
-					Refresh:  20 * 24 * time.Hour,
-					CertCreator: (&ocrypto.ServingCertCreatorConfig{
-						Subject: pkix.Name{
-							CommonName: "",
-						},
-						IPAddresses: ipAddresses,
-						DNSNames:    servingDNSNames,
-					}).ToCreator(),
 				},
-			},
-			secrets,
-			configMaps,
-		))
+				[]*okubecrypto.CertificateConfig{
+					{
+						MetaConfig: okubecrypto.MetaConfig{
+							Name:   naming.GetScyllaClusterLocalServingCertName(sc.Name),
+							Labels: clusterLabels,
+						},
+						Validity: 30 * 24 * time.Hour,
+						Refresh:  20 * 24 * time.Hour,
+						CertCreator: (&ocrypto.ServingCertCreatorConfig{
+							Subject: pkix.Name{
+								CommonName: "",
+							},
+							IPAddresses: ipAddresses,
+							DNSNames:    servingDNSNames,
+						}).ToCreator(),
+					},
+				},
+				secrets,
+				configMaps,
+			))
+
+		case scyllav1.OperatorManagedCertManagementType:
+			errs = append(errs, cm.ManageCertificates(
+				ctx,
+				time.Now,
+				&sc.ObjectMeta,
+				scyllaClusterControllerGVK,
+				&okubecrypto.CAConfig{
+					MetaConfig: okubecrypto.MetaConfig{
+						Name:   naming.GetScyllaClusterLocalServingCAName(sc.Name),
+						Labels: clusterLabels,
+					},
+					Validity: 10 * 365 * 24 * time.Hour,
+					Refresh:  8 * 365 * 24 * time.Hour,
+				},
+				&okubecrypto.CABundleConfig{
+					MetaConfig: okubecrypto.MetaConfig{
+						Name:   naming.GetScyllaClusterLocalServingCAName(sc.Name),
+						Labels: clusterLabels,
+					},
+				},
+				[]*okubecrypto.CertificateConfig{
+					{
+						MetaConfig: okubecrypto.MetaConfig{
+							Name:   naming.GetScyllaClusterLocalServingCertName(sc.Name),
+							Labels: clusterLabels,
+						},
+						Validity: 30 * 24 * time.Hour,
+						Refresh:  20 * 24 * time.Hour,
+						CertCreator: (&ocrypto.ServingCertCreatorConfig{
+							Subject: pkix.Name{
+								CommonName: "",
+							},
+							IPAddresses: ipAddresses,
+							DNSNames:    servingDNSNames,
+						}).ToCreator(),
+					},
+				},
+				secrets,
+				configMaps,
+			))
+
+		default:
+			errs = append(errs, fmt.Errorf("unsuported cert management type: %q", sc.Spec.CertsSpec.Type))
+
+		}
 
 		// Build connection bundle.
 

@@ -90,6 +90,9 @@ object
    * - :ref:`backups<api-scylla.scylladb.com-scyllaclusters-v1-.spec.backups[]>`
      - array (object)
      - backups specifies backup tasks in Scylla Manager. When Scylla Manager is not installed, these will be ignored.
+   * - :ref:`certsSpec<api-scylla.scylladb.com-scyllaclusters-v1-.spec.certsSpec>`
+     - object
+     - TODO: operator managed won't be handled fully (additional IP addresses and dns names skipped)
    * - cpuset
      - boolean
      - cpuset determines if the cluster will use cpu-pinning. Deprecated: `cpuset` is deprecated and may be ignored in the future.
@@ -329,6 +332,79 @@ object
    * - uploadParallel
      - array (string)
      - uploadParallel is a list of upload parallelism limits in the format [<dc>:]<limit>. The <dc>: part is optional and allows for specifying different limits in selected datacenters. If The <dc>: part is not set the limit is global (e.g. 'dc1:2,5') the runs are parallel in n nodes (2 in dc1) and n nodes in all the other datacenters.
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.certsSpec:
+
+.spec.certsSpec
+^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+TODO: operator managed won't be handled fully (additional IP addresses and dns names skipped)
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`operatorManagedOptions<api-scylla.scylladb.com-scyllaclusters-v1-.spec.certsSpec.operatorManagedOptions>`
+     - object
+     - TODO
+   * - type
+     - string
+     - TODO
+   * - :ref:`userManagedOptions<api-scylla.scylladb.com-scyllaclusters-v1-.spec.certsSpec.userManagedOptions>`
+     - object
+     - TODO
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.certsSpec.operatorManagedOptions:
+
+.spec.certsSpec.operatorManagedOptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+TODO
+
+Type
+""""
+object
+
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.certsSpec.userManagedOptions:
+
+.spec.certsSpec.userManagedOptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+TODO
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - clientCASecretName
+     - string
+     - 
+   * - servingCASecretName
+     - string
+     - 
 
 .. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter:
 

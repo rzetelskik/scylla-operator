@@ -529,7 +529,8 @@ func (scc *Controller) syncStatefulSets(
 	if len(createProgressingConditions) > 0 {
 		// Wait for the informers to catch up.
 		// TODO: Add expectations, not to reconcile sooner then we see this new StatefulSet in our caches. (#682)
-		time.Sleep(artificialDelayForCachesToCatchUp)
+		// TODO: removed this for the purposes of PoC
+		//time.Sleep(artificialDelayForCachesToCatchUp)
 		return progressingConditions, nil
 	}
 

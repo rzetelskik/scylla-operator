@@ -56,6 +56,11 @@ func SetHashAnnotation(obj metav1.Object) error {
 	obj.SetResourceVersion("")
 	defer obj.SetResourceVersion(rv)
 
+	// Do not hash generation.
+	gen := obj.GetGeneration()
+	obj.SetGeneration(0)
+	defer obj.SetGeneration(gen)
+
 	annotations := obj.GetAnnotations()
 	if annotations == nil {
 		annotations = map[string]string{}
@@ -64,12 +69,33 @@ func SetHashAnnotation(obj metav1.Object) error {
 	// Clear annotation to have consistent hashing for the same objects.
 	delete(annotations, naming.ManagedHash)
 
+	// TODO
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	labelsCp := make(map[string]string, len(labels))
+	for k, v := range labels {
+		labelsCp[k] = v
+	}
+
+	delete(labels, naming.OwnerUIDLabel)
+	delete(labels, naming.OwnerNameLabel)
+	delete(labels, naming.OwnerKindLabel)
+	//
+
 	hash, err := hashutil.HashObjects(obj)
 	if err != nil {
 		return err
 	}
 
 	annotations[naming.ManagedHash] = hash
+
+	// TODO
+	obj.SetLabels(labelsCp)
+	//
+
 	obj.SetAnnotations(annotations)
 
 	return nil

@@ -8,14 +8,14 @@ spec:
     matchLabels:
       app.kubernetes.io/name: scylla
       scylla-operator.scylladb.com/scylla-service-type: member
-      scylla/cluster: replace-with-your-scyllacluster-name
+      scylla/cluster: scylladb-cluster-pool-cbw9r
   components:
     prometheus:
       storage:
         volumeClaimTemplate:
           spec:
+            storageClassName: scylladb-local-xfs
             resources:
-              storageClassName: scylladb-local-xfs
               requests:
                 storage: 1Gi
     grafana:
