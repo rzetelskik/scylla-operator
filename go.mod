@@ -33,6 +33,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.2
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/rzetelskik/delayed-csi-driver v0.0.0-00010101000000-000000000000
 	github.com/scylladb/go-set v1.0.2
 	github.com/scylladb/gocqlx/v2 v2.8.0
 	github.com/scylladb/scylla-manager/v3 v3.3.1
@@ -228,5 +229,6 @@ replace (
 	github.com/Azure/azure-storage-blob-go => github.com/Azure/azure-storage-blob-go v0.13.0
 	github.com/gocql/gocql => github.com/scylladb/gocql v1.13.0
 	github.com/rclone/rclone => github.com/scylladb/rclone v1.54.1-0.20240312172628-afe1fd2aa65e
+	github.com/rzetelskik/delayed-csi-driver => ../../rzetelskik/delayed-csi-driver
 	google.golang.org/api => github.com/scylladb/google-api-go-client v0.34.1-patched
 )

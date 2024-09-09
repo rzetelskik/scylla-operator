@@ -145,7 +145,7 @@ func (o *ScyllaDBAPIStatusOptions) Run(originalStreams genericclioptions.IOStrea
 }
 
 func (o *ScyllaDBAPIStatusOptions) Execute(ctx context.Context, originalStreams genericclioptions.IOStreams, cmd *cobra.Command) (returnErr error) {
-	singleServiceKubeInformers := informers.NewSharedInformerFactoryWithOptions(
+	selfKubeInformers := informers.NewSharedInformerFactoryWithOptions(
 		o.kubeClient,
 		12*time.Hour,
 		informers.WithNamespace(o.Namespace),
@@ -155,24 +155,31 @@ func (o *ScyllaDBAPIStatusOptions) Execute(ctx context.Context, originalStreams 
 			},
 		),
 	)
-	singleServiceInformer := singleServiceKubeInformers.Core().V1().Services()
+	singleServiceInformer := selfKubeInformers.Core().V1().Services()
+	singlePodInformer := selfKubeInformers.Core().V1().Pods()
 
 	prober := scylladbapistatus.NewProber(
 		o.Namespace,
 		o.ServiceName,
 		singleServiceInformer.Lister(),
+		singlePodInformer.Lister(),
 	)
 
 	o.mux.HandleFunc(naming.LivenessProbePath, prober.Healthz)
 	o.mux.HandleFunc(naming.ReadinessProbePath, prober.Readyz)
 
 	// Start informers.
-	singleServiceKubeInformers.Start(ctx.Done())
-	defer singleServiceKubeInformers.Shutdown()
+	selfKubeInformers.Start(ctx.Done())
+	defer selfKubeInformers.Shutdown()
 
-	ok := cache.WaitForNamedCacheSync("Prober", ctx.Done(), singleServiceInformer.Informer().HasSynced)
+	cachesToSync := []cache.InformerSynced{
+		singleServiceInformer.Informer().HasSynced,
+		singlePodInformer.Informer().HasSynced,
+	}
+
+	ok := cache.WaitForNamedCacheSync("Prober", ctx.Done(), cachesToSync...)
 	if !ok {
-		return fmt.Errorf("error waiting for service informer cache to sync")
+		return fmt.Errorf("error waiting for caches to sync")
 	}
 
 	return o.ServeProbesOptions.Execute(ctx, originalStreams, cmd)

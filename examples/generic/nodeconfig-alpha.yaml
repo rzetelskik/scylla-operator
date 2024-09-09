@@ -7,7 +7,7 @@ spec:
     loopDevices:
     - name: persistent-volumes
       imagePath: /mnt/persistent-volumes.img
-      size: 80Gi
+      size: 20Gi
     filesystems:
     - device: /dev/loops/persistent-volumes
       type: xfs
