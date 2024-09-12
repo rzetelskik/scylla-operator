@@ -112,15 +112,10 @@ func (c *SystemdControl) StopUnit(ctx context.Context, unitFile string) error {
 	return nil
 }
 
-func (c *SystemdControl) EnableAndStartUnit(ctx context.Context, unitFile string) error {
-	err := c.EnableUnit(ctx, unitFile)
+func (c *SystemdControl) RestartUnit(ctx context.Context, unitFile string) error {
+	_, err := c.conn.RestartUnitContext(ctx, unitFile, "replace", nil)
 	if err != nil {
-		return err
-	}
-
-	err = c.StartUnit(ctx, unitFile)
-	if err != nil {
-		return err
+		return fmt.Errorf("can't restart unit %q: %w", unitFile, transformSystemdError(err))
 	}
 
 	return nil
@@ -138,4 +133,17 @@ func (c *SystemdControl) DisableAndStopUnit(ctx context.Context, unitFile string
 	}
 
 	return nil
+}
+
+func (c *SystemdControl) GetUnitActiveState(ctx context.Context, unitFile string) (string, error) {
+	statuses, err := c.conn.ListUnitsByNamesContext(ctx, []string{unitFile})
+	if err != nil {
+		return "", fmt.Errorf("can't list unit by name %q: %w", unitFile, transformSystemdError(err))
+	}
+
+	if len(statuses) == 0 {
+		return "", fmt.Errorf("TODO")
+	}
+
+	return statuses[0].ActiveState, nil
 }

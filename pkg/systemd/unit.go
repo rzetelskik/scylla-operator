@@ -11,8 +11,10 @@ import (
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers/slices"
+	"github.com/scylladb/scylla-operator/pkg/util/hash"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 )
@@ -22,12 +24,28 @@ type NamedUnit struct {
 	Data     []byte
 }
 
+type managedUnitStatus struct {
+	LastAppliedConfigurationHash string `yaml:"lastAppliedConfigurationHash"`
+}
+
 type unitManagerStatus struct {
-	ManagedUnits []string `yaml:"managedUnits"`
+	ManagedUnits        []string                     `yaml:"managedUnits"`
+	ManagedUnitStatuses map[string]managedUnitStatus `yaml:"managedUnitStatuses"`
 }
 
 func newUnitManagerStatus() *unitManagerStatus {
-	return &unitManagerStatus{}
+	return &unitManagerStatus{
+		ManagedUnitStatuses: map[string]managedUnitStatus{},
+	}
+}
+
+func (s *unitManagerStatus) GetManagedUnitStatusOrDefault(name string) managedUnitStatus {
+	mus, ok := s.ManagedUnitStatuses[name]
+	if !ok {
+		return managedUnitStatus{}
+	}
+
+	return mus
 }
 
 type UnitManager struct {
@@ -94,8 +112,12 @@ func (m *UnitManager) WriteStatus(status *unitManagerStatus) error {
 
 type EnsureControlInterface interface {
 	DaemonReload(ctx context.Context) error
-	EnableAndStartUnit(ctx context.Context, unitFile string) error
+	//EnableAndStartUnit(ctx context.Context, unitFile string) error
+	EnableUnit(ctx context.Context, unitFile string) error
+	StartUnit(ctx context.Context, unitFile string) error
+	RestartUnit(ctx context.Context, unitFile string) error
 	DisableAndStopUnit(ctx context.Context, unitFile string) error
+	GetUnitActiveState(ctx context.Context, unitName string) (string, error)
 }
 
 // EnsureUnits will make sure to remove any unit that is no longer desired and create/update those that are.
@@ -154,11 +176,20 @@ func (m *UnitManager) EnsureUnits(ctx context.Context, nc *scyllav1alpha1.NodeCo
 		)
 	}
 
+	// TODO: do not try to reconcile any units not owned by us
+
 	// First save the updated list of managed units first,
 	// so we can clean up in the next run, if we were interrupted.
 	status.ManagedUnits = slices.ConvertToSlice(func(unit *NamedUnit) string {
 		return unit.FileName
 	}, requiredUnits...)
+
+	managedUnitsSet := sets.New(status.ManagedUnits...)
+	for k := range status.ManagedUnitStatuses {
+		if !managedUnitsSet.Has(k) {
+			delete(status.ManagedUnitStatuses, k)
+		}
+	}
 
 	err = m.WriteStatus(status)
 	if err != nil {
@@ -202,12 +233,79 @@ func (m *UnitManager) EnsureUnits(ctx context.Context, nc *scyllav1alpha1.NodeCo
 		return fmt.Errorf("can't reload systemd: %w", err)
 	}
 
+	// TODO: aggregate errors
 	for _, requiredUnit := range requiredUnits {
-		klog.V(2).InfoS("Enabling and starting unit", "Name", requiredUnit.FileName)
-		err = control.EnableAndStartUnit(ctx, requiredUnit.FileName)
+		klog.V(2).InfoS("Enabling unit", "Name", requiredUnit.FileName)
+		err = control.EnableUnit(ctx, requiredUnit.FileName)
 		if err != nil {
 			return fmt.Errorf("can't enable unit %q: %w", requiredUnit.FileName, err)
 		}
+
+		var configurationHash string
+		configurationHash, err = hash.HashObjects(requiredUnit.Data)
+		if err != nil {
+			return fmt.Errorf("can't calculate configuration hash for unit %q: %w", requiredUnit.FileName, err)
+		}
+
+		unitRequiresRestart := false
+		mus := status.GetManagedUnitStatusOrDefault(requiredUnit.FileName)
+		if mus.LastAppliedConfigurationHash != configurationHash {
+			unitRequiresRestart = true
+			klog.V(2).InfoS("Unit requires restart", "Name", requiredUnit.FileName)
+		}
+
+		var unitActiveState string
+		unitActiveState, err = control.GetUnitActiveState(ctx, requiredUnit.FileName)
+		if err != nil {
+			return fmt.Errorf("can't get active state of unit %q: %w", requiredUnit.FileName, err)
+		}
+
+		switch unitActiveState {
+		case "active":
+			if !unitRequiresRestart {
+				// TODO: remove this?
+				klog.V(2).InfoS("Unit is already in a desired state", "Name", requiredUnit.FileName)
+				break
+			}
+
+			klog.V(2).InfoS("Restarting active unit", "Name", requiredUnit.FileName)
+			err = control.RestartUnit(ctx, requiredUnit.FileName)
+			if err != nil {
+				return fmt.Errorf("can't start unit %q: %w", requiredUnit.FileName, err)
+			}
+
+			// TODO: progressing
+		case "inactive":
+			klog.V(2).InfoS("Starting inactive unit", "Name", requiredUnit.FileName)
+			err = control.StartUnit(ctx, requiredUnit.FileName)
+			if err != nil {
+				return fmt.Errorf("can't start unit %q: %w", requiredUnit.FileName, err)
+			}
+
+			// TODO: progressing
+		case "activating", "deactivating":
+			klog.V(2).InfoS("Unexpected state", "Name", requiredUnit.FileName, "ActiveState", unitActiveState)
+			break
+		case "failed":
+			failedStateErr := fmt.Errorf("unit %q is in a failed state", requiredUnit.FileName)
+
+			klog.V(2).InfoS("Restarting failed unit", "Name", requiredUnit.FileName)
+			err = control.StartUnit(ctx, requiredUnit.FileName)
+			if err != nil {
+				return fmt.Errorf("can't start unit %q: %w", requiredUnit.FileName, err)
+			}
+
+			// TODO: progressing
+		}
+
+		mus.LastAppliedConfigurationHash = configurationHash
+		status.ManagedUnitStatuses[requiredUnit.FileName] = mus
+	}
+
+	// Save managed units' statuses.
+	err = m.WriteStatus(status)
+	if err != nil {
+		return fmt.Errorf("can't write status: %w", err)
 	}
 
 	return nil
