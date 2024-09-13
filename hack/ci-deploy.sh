@@ -27,7 +27,7 @@ mkdir -p "${DEPLOY_DIR}/"{operator,manager,prometheus-operator,haproxy-ingress}
 #cp ./deploy/manager/dev/*.yaml "${DEPLOY_DIR}/manager"
 cp ./deploy/operator/*.yaml "${DEPLOY_DIR}/operator"
 #cp ./examples/third-party/prometheus-operator/*.yaml "${DEPLOY_DIR}/prometheus-operator"
-#cp ./examples/third-party/haproxy-ingress/*.yaml "${DEPLOY_DIR}/haproxy-ingress"
+cp ./examples/third-party/haproxy-ingress/*.yaml "${DEPLOY_DIR}/haproxy-ingress"
 cp ./examples/common/cert-manager.yaml "${DEPLOY_DIR}/"
 
 for f in $( find "${DEPLOY_DIR}"/ -type f -name '*.yaml' ); do
@@ -42,7 +42,7 @@ if [[ -n ${SCYLLA_OPERATOR_FEATURE_GATES+x} ]]; then
 fi
 
 #kubectl_create -n prometheus-operator -f "${DEPLOY_DIR}/prometheus-operator"
-#kubectl_create -n haproxy-ingress -f "${DEPLOY_DIR}/haproxy-ingress"
+kubectl_create -n haproxy-ingress -f "${DEPLOY_DIR}/haproxy-ingress"
 kubectl_create -f "${DEPLOY_DIR}"/cert-manager.yaml
 
 # Wait for cert-manager
@@ -84,9 +84,9 @@ fi
 #kubectl -n=scylla-manager wait --timeout=10m --for='condition=Available=True' scyllaclusters.scylla.scylladb.com/scylla-manager-cluster
 #kubectl -n scylla-manager rollout status --timeout=10m deployment.apps/scylla-manager
 #kubectl -n scylla-manager rollout status --timeout=10m deployment.apps/scylla-manager-controller
-#
-#kubectl -n haproxy-ingress rollout status --timeout=5m deployment.apps/haproxy-ingress
-#kubectl -n haproxy-ingress rollout status --timeout=5m deployment.apps/haproxy-ingress deploy/ingress-default-backend deploy/prometheus
+
+kubectl -n haproxy-ingress rollout status --timeout=5m deployment.apps/haproxy-ingress
+kubectl -n haproxy-ingress rollout status --timeout=5m deployment.apps/haproxy-ingress deploy/ingress-default-backend deploy/prometheus
 
 kubectl wait --for condition=established crd/nodeconfigs.scylla.scylladb.com
 kubectl wait --for condition=established crd/scyllaoperatorconfigs.scylla.scylladb.com

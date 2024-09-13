@@ -253,6 +253,12 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 	maps.Copy(rackLabels, c.Labels)
 	maps.Copy(rackLabels, requiredLabels)
 
+	// TODO: do not propagate label selector
+	delete(rackLabels, naming.OwnerUIDLabel)
+	delete(rackLabels, naming.OwnerNameLabel)
+	delete(rackLabels, naming.OwnerKindLabel)
+	//
+
 	rackTemplateLabels := map[string]string{}
 	if c.Spec.PodMetadata != nil && c.Spec.PodMetadata.Labels != nil {
 		maps.Copy(rackTemplateLabels, c.Spec.PodMetadata.Labels)
@@ -261,8 +267,18 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 	}
 	maps.Copy(rackTemplateLabels, requiredLabels)
 
+	// TODO: do not propagate label selector
+	delete(rackTemplateLabels, naming.OwnerUIDLabel)
+	delete(rackTemplateLabels, naming.OwnerNameLabel)
+	delete(rackTemplateLabels, naming.OwnerKindLabel)
+	//
+
 	rackAnnotations := map[string]string{}
 	maps.Copy(rackAnnotations, c.Annotations)
+
+	// TODO: do not set annotations used by pausable scylladbclusterclaim
+	delete(rackAnnotations, naming.ScyllaDBClusterClaimNameAnnotation)
+	//
 
 	rackTemplateAnnotations := map[string]string{}
 	if c.Spec.PodMetadata != nil && c.Spec.PodMetadata.Annotations != nil {
@@ -273,6 +289,10 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 	rackTemplateAnnotations[naming.PrometheusScrapeAnnotation] = naming.LabelValueTrue
 	rackTemplateAnnotations[naming.PrometheusPortAnnotation] = "9180"
 	rackTemplateAnnotations[naming.InputsHashAnnotation] = inputsHash
+
+	// TODO: do not set annotations used by pausable scylladbclusterclaim
+	delete(rackTemplateAnnotations, naming.ScyllaDBClusterClaimNameAnnotation)
+	//
 
 	// VolumeClaims are not allowed to be edited by StatufulSet validation,
 	// which means we have to keep them static.

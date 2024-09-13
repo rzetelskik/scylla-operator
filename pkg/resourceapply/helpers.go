@@ -66,19 +66,10 @@ func SetHashAnnotation(obj metav1.Object) error {
 		annotations = map[string]string{}
 	}
 
-	// TODO
-	annotationsCp := make(map[string]string, len(annotations))
-	for k, v := range annotations {
-		annotationsCp[k] = v
-	}
-	//
-
 	// Clear annotation to have consistent hashing for the same objects.
 	delete(annotations, naming.ManagedHash)
 
-	// TODO: do not hash labels/annotations used by pausable scylladb operator (harcoded for now, we could use a label with a list of keys that shouldn't be hashed for both annotations and labels)
-	delete(annotations, naming.ScyllaDBClusterClaimNameAnnotation)
-
+	// TODO
 	labels := obj.GetLabels()
 	if labels == nil {
 		labels = map[string]string{}
@@ -99,14 +90,13 @@ func SetHashAnnotation(obj metav1.Object) error {
 		return err
 	}
 
-	annotationsCp[naming.ManagedHash] = hash
+	annotations[naming.ManagedHash] = hash
 
 	// TODO
-
 	obj.SetLabels(labelsCp)
 	//
 
-	obj.SetAnnotations(annotationsCp)
+	obj.SetAnnotations(annotations)
 
 	return nil
 }
