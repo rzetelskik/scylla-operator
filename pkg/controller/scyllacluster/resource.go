@@ -490,15 +490,29 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: naming.GetScyllaClusterLocalServingCertName(c.Name),
+											Optional:   pointer.Ptr(true),
 										},
 									},
 								},
 								{
 									Name: scylladbClientCAVolumeName,
 									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: naming.GetScyllaClusterLocalClientCAName(c.Name),
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: naming.GetScyllaClusterLocalClientCAName(c.Name),
+											},
+											Optional: pointer.Ptr(true),
 										},
+										//Secret: &corev1.SecretVolumeSource{
+										//	SecretName: func() string {
+										//		if c.Spec.CertsSpec != nil && c.Spec.CertsSpec.Type == scyllav1.UserManagedCertManagementType {
+										//			return c.Spec.CertsSpec.UserManagedOptions.ClientCASecretName
+										//		}
+										//
+										//		return naming.GetScyllaClusterLocalClientCAName(c.Name)
+										//	}(),
+										//	Optional: pointer.Ptr(true),
+										//},
 									},
 								},
 								{
@@ -506,6 +520,7 @@ func StatefulSetForRack(r scyllav1.RackSpec, c *scyllav1.ScyllaCluster, existing
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: naming.GetScyllaClusterLocalUserAdminCertName(c.Name),
+											Optional:   pointer.Ptr(true),
 										},
 									},
 								},
@@ -584,6 +599,13 @@ until [[ -f "/mnt/shared/delayed-volume-mounting.done" ]]; do
   sleep 1;
 done
 printf 'INFO %s delayed volume mounting - Mounted.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+
+printf 'INFO %s certs - Waiting for certs to be set up\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+until [[ -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt" && -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key" && -f "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt" ]]; do
+  sleep 1;
+done
+printf 'INFO %s certs - Certs are set up.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+
 printf 'INFO %s starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 
 # TODO: This is where we should start ScyllaDB directly after the sidecar split #1942 
@@ -681,7 +703,7 @@ exec /mnt/shared/scylla-operator sidecar \
 										},
 										{
 											Name:      scylladbClientCAVolumeName,
-											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca",
+											MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
 											ReadOnly:  true,
 										},
 										{

@@ -149,6 +149,40 @@ type ScyllaClusterSpec struct {
 	// about readiness gates.
 	// +optional
 	ReadinessGates []corev1.PodReadinessGate `json:"readinessGates,omitempty"`
+
+	// +optional
+	// +kubebuilder:default:={type:"OperatorManaged"}
+	CertsSpec *CertsSpec `json:"certsSpec,omitempty"`
+}
+
+type CertManagementType string
+
+const (
+	OperatorManagedCertManagementType CertManagementType = "OperatorManaged"
+	UserManagedCertManagementType     CertManagementType = "UserManaged"
+)
+
+type OperatorManagedCertManagementSpecOptions struct{}
+
+type UserManagedCertManagementSpecOptions struct {
+	ServingCASecretName string `json:"servingCASecretName"`
+
+	ClientCASecretName string `json:"clientCASecretName"`
+}
+
+// TODO: operator managed won't be handled fully (additional IP addresses and dns names skipped)
+type CertsSpec struct {
+	// TODO
+	// +kubebuilder:validation:Enum="OperatorManaged";"UserManaged"
+	Type CertManagementType `json:"type"`
+
+	// TODO
+	// +optional
+	UserManagedOptions *UserManagedCertManagementSpecOptions `json:"userManagedOptions,omitempty"`
+
+	// TODO
+	// +optional
+	OperatorManagedOptions *OperatorManagedCertManagementSpecOptions `json:"operatorManagedOptions,omitempty"`
 }
 
 type PodIPSourceType string

@@ -88,6 +88,7 @@ fi
 kubectl -n haproxy-ingress rollout status --timeout=5m deployment.apps/haproxy-ingress
 kubectl -n haproxy-ingress rollout status --timeout=5m deployment.apps/haproxy-ingress deploy/ingress-default-backend deploy/prometheus
 
+
 kubectl wait --for condition=established crd/nodeconfigs.scylla.scylladb.com
 kubectl wait --for condition=established crd/scyllaoperatorconfigs.scylla.scylladb.com
 kubectl wait --for condition=established crd/scylladbmonitorings.scylla.scylladb.com
