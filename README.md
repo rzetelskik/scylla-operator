@@ -72,3 +72,7 @@ We are also available on `#scylla-operator` channel on [Slack](https://scylladb-
 
 ## Contributing
 We would **love** you to contribute to Scylla Operator, help make it even better and learn together! Have a look at the [Contributing Guide](docs/source/contributing.md) or reach out to us on `#scylla-operator` channel on [Slack](https://scylladb-users-slackin.herokuapp.com/) if you have questions.
+
+.
+
+
