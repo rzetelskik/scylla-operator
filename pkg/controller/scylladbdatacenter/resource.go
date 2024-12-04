@@ -631,6 +631,8 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 									"inherit_errexit",
 									"-c",
 									strings.TrimSpace(`
+trap 'exit' SIGINT SIGTERM
+
 printf 'INFO %s ignition - Waiting for /mnt/shared/ignition.done\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
@@ -1180,13 +1182,15 @@ func getScyllaDBManagerAgentContainer(r scyllav1alpha1.RackSpec, sdc *scyllav1al
 			"inherit_errexit",
 			"-c",
 			strings.TrimSpace(`
+trap 'exit' SIGINT SIGTERM
+
 printf '{"L":"INFO","T":"%s","M":"Waiting for /mnt/shared/ignition.done"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
 done
 printf '{"L":"INFO","T":"%s","M":"Ignited. Starting ScyllaDB Manager Agent"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 
-scylla-manager-agent \
+exec scylla-manager-agent \
 -c ` + fmt.Sprintf("%q ", naming.ScyllaAgentConfigDefaultFile) + `\
 -c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName)) + `\
 -c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentAuthTokenFileName)) + `

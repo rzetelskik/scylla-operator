@@ -722,6 +722,8 @@ func TestStatefulSetForRack(t *testing.T) {
 										"inherit_errexit",
 										"-c",
 										strings.TrimSpace(`
+trap 'exit' SIGINT SIGTERM
+
 printf 'INFO %s ignition - Waiting for /mnt/shared/ignition.done\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
@@ -988,13 +990,15 @@ wait`,
 									"inherit_errexit",
 									"-c",
 									strings.TrimSpace(`
+trap 'exit' SIGINT SIGTERM
+
 printf '{"L":"INFO","T":"%s","M":"Waiting for /mnt/shared/ignition.done"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
 done
 printf '{"L":"INFO","T":"%s","M":"Ignited. Starting ScyllaDB Manager Agent"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 
-scylla-manager-agent \
+exec scylla-manager-agent \
 -c "/etc/scylla-manager-agent/scylla-manager-agent.yaml" \
 -c "/mnt/scylla-agent-config/scylla-manager-agent.yaml" \
 -c "/mnt/scylla-agent-config/auth-token.yaml"
