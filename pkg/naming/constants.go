@@ -198,3 +198,9 @@ const (
 const (
 	UpgradeContextConfigMapKey = "upgrade-context.json"
 )
+
+const (
+	// IgnoreInternalKeyPrefix is a prefix intended for use with labels or annotations which should not be propagated to resources created by the operator,
+	// nor should be taken into account when computing managed object hashes.
+	IgnoreInternalKeyPrefix = "ignore.internal.scylla-operator.scylladb.com"
+)
