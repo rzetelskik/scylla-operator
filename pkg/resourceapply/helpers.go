@@ -3,6 +3,7 @@ package resourceapply
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
@@ -56,21 +57,36 @@ func SetHashAnnotation(obj metav1.Object) error {
 	obj.SetResourceVersion("")
 	defer obj.SetResourceVersion(rv)
 
+	labels := obj.GetLabels()
+	labelsCopy := maps.Clone(labels)
+	if labelsCopy == nil {
+		labelsCopy = map[string]string{}
+	}
+
+	// Do not take ignored keys into account for hashing.
+	naming.DeleteIgnoreInternalKeys(labels)
+
 	annotations := obj.GetAnnotations()
-	if annotations == nil {
-		annotations = map[string]string{}
+	annotationsCopy := maps.Clone(annotations)
+	if annotationsCopy == nil {
+		annotationsCopy = map[string]string{}
 	}
 
 	// Clear annotation to have consistent hashing for the same objects.
 	delete(annotations, naming.ManagedHash)
+
+	// Do not take ignored keys into account for hashing.
+	naming.DeleteIgnoreInternalKeys(annotations)
 
 	hash, err := hashutil.HashObjects(obj)
 	if err != nil {
 		return err
 	}
 
-	annotations[naming.ManagedHash] = hash
-	obj.SetAnnotations(annotations)
+	obj.SetLabels(labelsCopy)
+
+	annotationsCopy[naming.ManagedHash] = hash
+	obj.SetAnnotations(annotationsCopy)
 
 	return nil
 }

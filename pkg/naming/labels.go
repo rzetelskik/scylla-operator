@@ -1,6 +1,9 @@
 package naming
 
 import (
+	"maps"
+	"strings"
+
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -84,4 +87,10 @@ func mergeLabels(l1, l2 map[string]string) map[string]string {
 		res[k] = v
 	}
 	return res
+}
+
+func DeleteIgnoreInternalKeys(m map[string]string) {
+	maps.DeleteFunc(m, func(key, _ string) bool {
+		return strings.HasPrefix(key, IgnoreInternalKeyPrefix)
+	})
 }
