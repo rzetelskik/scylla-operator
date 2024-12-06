@@ -31,9 +31,11 @@ func TestMemberService(t *testing.T) {
 			UID:  "the-uid",
 			Labels: map[string]string{
 				"default-sc-label": "foo",
+				"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 			},
 			Annotations: map[string]string{
-				"default-sc-annotation": "bar",
+				"default-sc-annotation":                            "bar",
+				"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 			},
 		},
 		Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
@@ -471,9 +473,11 @@ func TestStatefulSetForRack(t *testing.T) {
 				UID:  "the-uid",
 				Labels: map[string]string{
 					"default-sc-label": "foo",
+					"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 				},
 				Annotations: map[string]string{
-					"default-sc-annotation": "bar",
+					"default-sc-annotation":                            "bar",
+					"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 				},
 			},
 			Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
@@ -1585,11 +1589,13 @@ func TestMakeIngresses(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "basic",
 			UID:  "the-uid",
-			Annotations: map[string]string{
-				"default-sc-annotation": "bar",
-			},
 			Labels: map[string]string{
 				"default-sc-label": "foo",
+				"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
+			},
+			Annotations: map[string]string{
+				"default-sc-annotation":                            "bar",
+				"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 			},
 		},
 		Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
@@ -2095,9 +2101,11 @@ func TestMakeJobs(t *testing.T) {
 			UID:       "the-uid",
 			Labels: map[string]string{
 				"default-sc-label": "foo",
+				"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 			},
 			Annotations: map[string]string{
-				"default-sc-annotation": "bar",
+				"default-sc-annotation":                            "bar",
+				"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
 			},
 		},
 		Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
@@ -2747,6 +2755,67 @@ func Test_MakeManagedScyllaDBConfig(t *testing.T) {
 		expectedCM           *corev1.ConfigMap
 		expectedErr          error
 	}{
+		{
+			name: "ignored internal labels and annotations are not propagated",
+			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "foo-ns",
+					Name:      "foo",
+					UID:       "uid-42",
+					Labels: map[string]string{
+						"default-sc-label": "foo",
+						"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
+					},
+					Annotations: map[string]string{
+						"default-sc-annotation":                            "bar",
+						"ignore.internal.scylla-operator.scylladb.com/foo": "bar",
+					},
+				},
+				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
+					ClusterName: "foo-cluster",
+				},
+			},
+			enableTLSFeatureGate: false,
+			expectedCM: &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ConfigMap",
+					APIVersion: "v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "foo-ns",
+					Name:      "foo-managed-config",
+					Labels: map[string]string{
+						"app":                          "scylla",
+						"app.kubernetes.io/managed-by": "scylla-operator",
+						"app.kubernetes.io/name":       "scylla",
+						"scylla/cluster":               "foo",
+						"default-sc-label":             "foo",
+					},
+					Annotations: map[string]string{
+						"default-sc-annotation": "bar",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "scylla.scylladb.com/v1alpha1",
+							Kind:               "ScyllaDBDatacenter",
+							Name:               "foo",
+							UID:                "uid-42",
+							Controller:         pointer.Ptr(true),
+							BlockOwnerDeletion: pointer.Ptr(true),
+						},
+					},
+				},
+				Data: map[string]string{
+					"scylladb-managed-config.yaml": strings.TrimPrefix(`
+cluster_name: "foo-cluster"
+rpc_address: "0.0.0.0"
+endpoint_snitch: "GossipingPropertyFileSnitch"
+internode_compression: "all"
+`, "\n"),
+				},
+			},
+			expectedErr: nil,
+		},
 		{
 			name: "no TLS config when the feature is disabled",
 			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
