@@ -631,8 +631,10 @@ func TestStatefulSetForRack(t *testing.T) {
 									{
 										Name: "scylladb-client-ca",
 										VolumeSource: corev1.VolumeSource{
-											Secret: &corev1.SecretVolumeSource{
-												SecretName: "basic-local-client-ca",
+											ConfigMap: &corev1.ConfigMapVolumeSource{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "basic-local-client-ca",
+												},
 											},
 										},
 									},
@@ -817,7 +819,7 @@ exec /mnt/shared/scylla-operator sidecar \
 											},
 											{
 												Name:      "scylladb-client-ca",
-												MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca",
+												MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
 												ReadOnly:  true,
 											},
 											{
@@ -2914,7 +2916,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 `, "\n"),
 				},
 			},
@@ -2979,7 +2981,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: true
 alternator_https_port: 8043
@@ -3056,7 +3058,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: true
 alternator_https_port: 8043
@@ -3133,7 +3135,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: true
 alternator_port: 8000
@@ -3211,7 +3213,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: false
 alternator_port: 42
@@ -3291,7 +3293,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: true
 alternator_port: 42
@@ -3371,7 +3373,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: false
 alternator_port: 42
@@ -3451,7 +3453,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: true
 alternator_port: 42
@@ -3529,7 +3531,7 @@ client_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
   require_client_auth: true
-  truststore: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/client-ca/tls.crt"
+  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: false
 alternator_https_port: 8043
