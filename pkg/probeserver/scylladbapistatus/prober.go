@@ -2,12 +2,16 @@ package scylladbapistatus
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	corev1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 )
@@ -21,18 +25,23 @@ type Prober struct {
 	serviceName   string
 	serviceLister corev1.ServiceLister
 	timeout       time.Duration
+
+	awaitPaths []string
 }
 
 func NewProber(
 	namespace string,
 	serviceName string,
 	serviceLister corev1.ServiceLister,
+	awaitPaths []string,
 ) *Prober {
 	return &Prober{
 		namespace:     namespace,
 		serviceName:   serviceName,
 		serviceLister: serviceLister,
 		timeout:       60 * time.Second,
+
+		awaitPaths: awaitPaths,
 	}
 }
 
@@ -50,9 +59,47 @@ func (p *Prober) isNodeUnderMaintenance() (bool, error) {
 	return hasLabel, nil
 }
 
+func (p *Prober) awaitPathsExist() (bool, error) {
+	var err error
+	var errs []error
+
+	ready := true
+	for _, path := range p.awaitPaths {
+		_, err = os.Stat(path)
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				errs = append(errs, fmt.Errorf("can't stat path %q: %w", path, err))
+				continue
+			}
+
+			ready = false
+		}
+	}
+
+	err = utilerrors.NewAggregate(errs)
+	if err != nil {
+		return false, err
+	}
+
+	return ready, nil
+}
+
 func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	awaitPathsExist, err := p.awaitPathsExist()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		klog.ErrorS(err, "readyz probe: can't check required paths' existence")
+		return
+	}
+
+	if !awaitPathsExist {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		klog.V(2).InfoS("readyz probe: node is awaiting required paths' existence", "AwaitPaths", p.awaitPaths)
+		return
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {
@@ -117,6 +164,19 @@ func (p *Prober) Readyz(w http.ResponseWriter, req *http.Request) {
 func (p *Prober) Healthz(w http.ResponseWriter, req *http.Request) {
 	ctx, ctxCancel := context.WithTimeout(req.Context(), p.timeout)
 	defer ctxCancel()
+
+	awaitPathsExist, err := p.awaitPathsExist()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		klog.ErrorS(err, "halthz probe: can't check required paths' existence")
+		return
+	}
+
+	if !awaitPathsExist {
+		w.WriteHeader(http.StatusOK)
+		klog.V(2).InfoS("healthz probe: node is awaiting required paths' existence", "AwaitPaths", p.awaitPaths)
+		return
+	}
 
 	underMaintenance, err := p.isNodeUnderMaintenance()
 	if err != nil {

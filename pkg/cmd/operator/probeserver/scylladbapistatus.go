@@ -2,8 +2,11 @@ package probeserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/scylladb/scylla-operator/pkg/genericclioptions"
@@ -29,6 +32,7 @@ type ScyllaDBAPIStatusOptions struct {
 	genericclioptions.ClientConfig
 	genericclioptions.InClusterReflection
 	ServiceName string
+	AwaitPaths  []string
 
 	mux        *http.ServeMux
 	kubeClient kubernetes.Interface
@@ -50,6 +54,7 @@ func (o *ScyllaDBAPIStatusOptions) AddFlags(cmd *cobra.Command) {
 	o.InClusterReflection.AddFlags(cmd)
 
 	cmd.Flags().StringVarP(&o.ServiceName, "service-name", "", o.ServiceName, "Name of the service corresponding to the managed node.")
+	cmd.Flags().StringSliceVarP(&o.AwaitPaths, "await-paths", "", o.AwaitPaths, "Paths to await existence of. Until all exist, service will be considered healthy and unready.")
 }
 
 func NewScyllaDBAPIStatusCmd(streams genericclioptions.IOStreams) *cobra.Command {
@@ -87,6 +92,7 @@ func NewScyllaDBAPIStatusCmd(streams genericclioptions.IOStreams) *cobra.Command
 }
 
 func (o *ScyllaDBAPIStatusOptions) Validate(args []string) error {
+	var err error
 	var errs []error
 
 	errs = append(errs, o.ServeProbesOptions.Validate(args))
@@ -99,6 +105,13 @@ func (o *ScyllaDBAPIStatusOptions) Validate(args []string) error {
 		serviceNameValidationErrs := apimachineryvalidation.NameIsDNS1035Label(o.ServiceName, false)
 		if len(serviceNameValidationErrs) != 0 {
 			errs = append(errs, fmt.Errorf("invalid service name %q: %v", o.ServiceName, serviceNameValidationErrs))
+		}
+	}
+
+	for _, path := range o.AwaitPaths {
+		_, err = os.Stat(path)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("can't stat %q: %w", path, err))
 		}
 	}
 
@@ -161,6 +174,7 @@ func (o *ScyllaDBAPIStatusOptions) Execute(ctx context.Context, originalStreams 
 		o.Namespace,
 		o.ServiceName,
 		singleServiceInformer.Lister(),
+		o.AwaitPaths,
 	)
 
 	o.mux.HandleFunc(naming.LivenessProbePath, prober.Healthz)
