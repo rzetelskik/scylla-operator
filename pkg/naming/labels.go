@@ -3,6 +3,7 @@ package naming
 import (
 	"fmt"
 	"maps"
+	"strings"
 
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
@@ -204,4 +205,10 @@ func RemoteOwnerLabels(sc *scyllav1alpha1.ScyllaDBCluster, dc *scyllav1alpha1.Sc
 	maps.Copy(remoteOwnerLabels, RemoteOwnerSelectorLabels(sc, dc))
 
 	return remoteOwnerLabels
+}
+
+func DeleteIgnoreInternalKeys(m map[string]string) {
+	maps.DeleteFunc(m, func(key, _ string) bool {
+		return strings.HasPrefix(key, IgnoreInternalKeyPrefix)
+	})
 }

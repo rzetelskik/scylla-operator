@@ -61,8 +61,12 @@ const (
 )
 
 func IdentityService(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.Service, error) {
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	svcLabels := map[string]string{}
-	maps.Copy(svcLabels, sdc.Labels)
+	maps.Copy(svcLabels, sdcLabels)
 	maps.Copy(svcLabels, naming.ClusterLabels(sdc))
 	svcLabels[naming.ScyllaServiceTypeLabel] = string(naming.ScyllaServiceTypeIdentity)
 
@@ -72,6 +76,8 @@ func IdentityService(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.Service, e
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	maps.Copy(svcAnnotations, sdcAnnotations)
 
@@ -99,12 +105,16 @@ func IdentityService(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.Service, e
 }
 
 func MemberService(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName, name string, oldService *corev1.Service, jobs map[string]*batchv1.Job) (*corev1.Service, error) {
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	svcLabels := map[string]string{}
 
 	if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.NodeService.Labels != nil {
 		maps.Copy(svcLabels, sdc.Spec.ExposeOptions.NodeService.Labels)
 	} else {
-		maps.Copy(svcLabels, sdc.Labels)
+		maps.Copy(svcLabels, sdcLabels)
 	}
 
 	maps.Copy(svcLabels, naming.ClusterLabels(sdc))
@@ -118,6 +128,8 @@ func MemberService(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName, name string
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.NodeService.Annotations != nil {
 		maps.Copy(svcAnnotations, sdc.Spec.ExposeOptions.NodeService.Annotations)
@@ -297,20 +309,25 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 		rack = applyRackTemplateOnRackSpec(sdc.Spec.RackTemplate, rack)
 	}
 
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	requiredLabels := map[string]string{}
 	requiredLabels[naming.RackOrdinalLabel] = strconv.Itoa(rackOrdinal)
 	requiredLabels[naming.ScyllaVersionLabel] = scyllaDBVersion
 	maps.Copy(requiredLabels, selectorLabels)
 
 	rackLabels := map[string]string{}
-	maps.Copy(rackLabels, sdc.Labels)
+
+	maps.Copy(rackLabels, sdcLabels)
 	maps.Copy(rackLabels, requiredLabels)
 
 	rackTemplateLabels := map[string]string{}
 	if sdc.Spec.Metadata != nil && sdc.Spec.Metadata.Labels != nil {
 		maps.Copy(rackTemplateLabels, sdc.Spec.Metadata.Labels)
 	} else {
-		maps.Copy(rackTemplateLabels, sdc.Labels)
+		maps.Copy(rackTemplateLabels, sdcLabels)
 	}
 	maps.Copy(rackTemplateLabels, requiredLabels)
 
@@ -318,6 +335,8 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	rackAnnotations := map[string]string{}
 	maps.Copy(rackAnnotations, sdcAnnotations)
@@ -352,7 +371,7 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 	if rack.ScyllaDB != nil && rack.ScyllaDB.Storage != nil && rack.ScyllaDB.Storage.Metadata != nil && rack.ScyllaDB.Storage.Metadata.Labels != nil {
 		maps.Copy(dataVolumeClaimLabels, rack.ScyllaDB.Storage.Metadata.Labels)
 	} else if existingSts == nil {
-		maps.Copy(dataVolumeClaimLabels, sdc.Labels)
+		maps.Copy(dataVolumeClaimLabels, sdcLabels)
 	} else {
 		if existingDataPVCTemplate == nil {
 			return nil, fmt.Errorf("data PVC template %q in existing %q StatefulSet spec is missing", naming.PVCTemplateName, naming.ObjRef(existingSts))
@@ -1256,14 +1275,20 @@ func MakePodDisruptionBudget(sdc *scyllav1alpha1.ScyllaDBDatacenter) *policyv1.P
 
 	selectorLabels := naming.ClusterLabels(sdc)
 
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	labels := map[string]string{}
-	maps.Copy(labels, sdc.Labels)
+	maps.Copy(labels, sdcLabels)
 	maps.Copy(labels, selectorLabels)
 
 	// As ScyllaDBDatacenter may be managed object (when user is using scyllav1.ScyllaCluster API), managed
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	// Ignore any Job Pods that share the selector with ScyllaDB Pods, they shouldn't be accounted for PDB.
 	selector := metav1.SetAsLabelSelector(selectorLabels)
@@ -1316,10 +1341,16 @@ func MakeIngresses(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*
 
 	var ingresses []*networkingv1.Ingress
 
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	// As ScyllaDBDatacenter may be managed object (when user is using scyllav1.ScyllaCluster API), managed
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	for _, ip := range ingressParams {
 		for _, service := range services {
@@ -1333,7 +1364,7 @@ func MakeIngresses(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*
 			}
 
 			labels := map[string]string{}
-			maps.Copy(labels, sdc.Labels)
+			maps.Copy(labels, sdcLabels)
 			maps.Copy(labels, naming.ClusterLabels(sdc))
 
 			switch naming.ScyllaServiceType(service.Labels[naming.ScyllaServiceTypeLabel]) {
@@ -1422,14 +1453,20 @@ func MakeAgentAuthTokenSecret(sdc *scyllav1alpha1.ScyllaDBDatacenter, authToken 
 		return nil, err
 	}
 
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	labels := map[string]string{}
-	maps.Copy(labels, sdc.Labels)
+	maps.Copy(labels, sdcLabels)
 	maps.Copy(labels, naming.ClusterLabels(sdc))
 
 	// As ScyllaDBDatacenter may be managed object (when user is using scyllav1.ScyllaCluster API), managed
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1467,8 +1504,12 @@ func copyReferencedValue[T any](v *T) *T {
 }
 
 func MakeServiceAccount(sdc *scyllav1alpha1.ScyllaDBDatacenter) *corev1.ServiceAccount {
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	labels := map[string]string{}
-	maps.Copy(labels, sdc.Labels)
+	maps.Copy(labels, sdcLabels)
 	maps.Copy(labels, naming.ClusterLabels(sdc))
 
 	annotations := map[string]string{}
@@ -1477,6 +1518,9 @@ func MakeServiceAccount(sdc *scyllav1alpha1.ScyllaDBDatacenter) *corev1.ServiceA
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
+
 	maps.Copy(annotations, sdcAnnotations)
 
 	return &corev1.ServiceAccount{
@@ -1495,14 +1539,20 @@ func MakeServiceAccount(sdc *scyllav1alpha1.ScyllaDBDatacenter) *corev1.ServiceA
 func MakeRoleBinding(sdc *scyllav1alpha1.ScyllaDBDatacenter) *rbacv1.RoleBinding {
 	saName := naming.MemberServiceAccountNameForScyllaDBDatacenter(sdc.Name)
 
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	labels := map[string]string{}
-	maps.Copy(labels, sdc.Labels)
+	maps.Copy(labels, sdcLabels)
 	maps.Copy(labels, naming.ClusterLabels(sdc))
 
 	// As ScyllaDBDatacenter may be managed object (when user is using scyllav1.ScyllaCluster API), managed
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	annotations := map[string]string{}
 	maps.Copy(annotations, sdcAnnotations)
@@ -1612,8 +1662,12 @@ func MakeJobs(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev
 
 			klog.InfoS("Node requires a cleanup", "Node", naming.ObjRef(svc), "CurrentHash", currentTokenRingHash, "LastCleanedUpHash", lastCleanedUpTokenRingHash)
 
+			sdcLabels := maps.Clone(sdc.Labels)
+			// Do not propagate ignored keys into managed objects.
+			naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 			jobLabels := map[string]string{}
-			maps.Copy(jobLabels, sdc.Labels)
+			maps.Copy(jobLabels, sdcLabels)
 			maps.Copy(jobLabels, map[string]string{
 				naming.ClusterNameLabel: sdc.Name,
 				naming.NodeJobLabel:     svcName,
@@ -1626,6 +1680,9 @@ func MakeJobs(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev
 			// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 			sdcAnnotations := maps.Clone(sdc.Annotations)
 			delete(sdcAnnotations, naming.ManagedHash)
+			// Do not propagate ignored keys into managed objects.
+			naming.DeleteIgnoreInternalKeys(sdcAnnotations)
+
 			maps.Copy(annotations, sdcAnnotations)
 
 			annotations[naming.CleanupJobTokenRingHashAnnotation] = currentTokenRingHash
@@ -1754,10 +1811,14 @@ func MakeManagedScyllaDBConfig(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.
 		},
 	})
 
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
+
 	if cm.Labels == nil {
 		cm.Labels = map[string]string{}
 	}
-	maps.Copy(cm.Labels, sdc.Labels)
+	maps.Copy(cm.Labels, sdcLabels)
 	maps.Copy(cm.Labels, naming.ClusterLabels(sdc))
 
 	if cm.Annotations == nil {
@@ -1767,6 +1828,8 @@ func MakeManagedScyllaDBConfig(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.
 	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
 	sdcAnnotations := maps.Clone(sdc.Annotations)
 	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
 
 	maps.Copy(cm.Annotations, sdcAnnotations)
 
@@ -1968,10 +2031,21 @@ func MakeUpgradeContextConfigMap(sdc *scyllav1alpha1.ScyllaDBDatacenter, uc *int
 	labels := make(map[string]string)
 	annotations := make(map[string]string)
 
-	maps.Copy(labels, sdc.Labels)
-	maps.Copy(annotations, sdc.Annotations)
+	sdcLabels := maps.Clone(sdc.Labels)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcLabels)
 
+	maps.Copy(labels, sdcLabels)
 	maps.Copy(labels, naming.ClusterLabels(sdc))
+
+	// As ScyllaDBDatacenter may be managed object (when user is using scyllav1.ScyllaCluster API), managed
+	// hash from it shouldn't propagate into dependency objects to not trigger unnecessary double rollouts.
+	sdcAnnotations := maps.Clone(sdc.Annotations)
+	delete(sdcAnnotations, naming.ManagedHash)
+	// Do not propagate ignored keys into managed objects.
+	naming.DeleteIgnoreInternalKeys(sdcAnnotations)
+
+	maps.Copy(annotations, sdcAnnotations)
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{

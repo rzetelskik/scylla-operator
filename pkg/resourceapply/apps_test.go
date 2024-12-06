@@ -33,6 +33,7 @@ func TestApplyStatefulSet(t *testing.T) {
 				// Setting a RV make sure it's propagated to update calls for optimistic concurrency.
 				ResourceVersion: "42",
 				Labels:          map[string]string{},
+				Annotations:     map[string]string{},
 				OwnerReferences: []metav1.OwnerReference{
 					{
 						Controller:         pointer.Ptr(true),
@@ -587,6 +588,36 @@ func TestApplyStatefulSet(t *testing.T) {
 			expectedSts:     nil,
 			expectedChanged: false,
 			expectedErr:     fmt.Errorf("can't get recreate reason: %w", fmt.Errorf(`required StatefulSet selector "bar=foo,foo=bar" doesn't match existing Pod Labels set map[foo:bar]`)),
+			expectedEvents:  nil,
+		},
+		{
+			name: "won't update the sts if only ignored internal labels differ",
+			existing: []runtime.Object{
+				newStsWithHash(),
+			},
+			required: func() *appsv1.StatefulSet {
+				sts := newSts()
+				sts.Labels["ignore.internal.scylla-operator.scylladb.com/foo"] = "bar"
+				return sts
+			}(),
+			expectedSts:     newStsWithHash(),
+			expectedChanged: false,
+			expectedErr:     nil,
+			expectedEvents:  nil,
+		},
+		{
+			name: "won't update the sts if only ignored internal annotations differ",
+			existing: []runtime.Object{
+				newStsWithHash(),
+			},
+			required: func() *appsv1.StatefulSet {
+				sts := newSts()
+				sts.Annotations["ignore.internal.scylla-operator.scylladb.com/foo"] = "bar"
+				return sts
+			}(),
+			expectedSts:     newStsWithHash(),
+			expectedChanged: false,
+			expectedErr:     nil,
 			expectedEvents:  nil,
 		},
 	}
