@@ -3516,6 +3516,70 @@ spec:
             spec:
               description: spec defines the desired state of this ScyllaDBDatacenter.
               properties:
+                certificateOptions:
+                  description: certificateOptions specify parameters related to customizing certificate configuration for ScyllaDBDatacenter.
+                  properties:
+                    clientCA:
+                      default:
+                        type: OperatorManaged
+                      description: clientCA references a client TLS certificate authority.
+                      properties:
+                        operatorManagedOptions:
+                          description: operatorManagedOptions specifies options for certificates manged by the operator.
+                          properties:
+                            additionalDNSNames:
+                              description: additionalDNSNames represents external DNS names that the certificates should be signed for.
+                              items:
+                                type: string
+                              type: array
+                            additionalIPAddresses:
+                              description: additionalIPAddresses represents external IP addresses that the certificates should be signed for.
+                              items:
+                                type: string
+                              type: array
+                          type: object
+                        type:
+                          description: type determines the source of this certificate.
+                          type: string
+                        userManagedOptions:
+                          description: userManagedOptions specifies options for certificates manged by users.
+                          properties:
+                            secretName:
+                              description: secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
+                              type: string
+                          type: object
+                      type: object
+                    servingCA:
+                      default:
+                        type: OperatorManaged
+                      description: servingCA references a TLS certificate authority for serving secure traffic.
+                      properties:
+                        operatorManagedOptions:
+                          description: operatorManagedOptions specifies options for certificates manged by the operator.
+                          properties:
+                            additionalDNSNames:
+                              description: additionalDNSNames represents external DNS names that the certificates should be signed for.
+                              items:
+                                type: string
+                              type: array
+                            additionalIPAddresses:
+                              description: additionalIPAddresses represents external IP addresses that the certificates should be signed for.
+                              items:
+                                type: string
+                              type: array
+                          type: object
+                        type:
+                          description: type determines the source of this certificate.
+                          type: string
+                        userManagedOptions:
+                          description: userManagedOptions specifies options for certificates manged by users.
+                          properties:
+                            secretName:
+                              description: secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
+                              type: string
+                          type: object
+                      type: object
+                  type: object
                 clusterName:
                   description: clusterName specifies the name of the ScyllaDB cluster. When joining two DCs, their cluster name must match. This field is immutable.
                   type: string
