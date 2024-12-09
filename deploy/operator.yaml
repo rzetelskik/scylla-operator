@@ -3516,6 +3516,48 @@ spec:
             spec:
               description: spec defines the desired state of this ScyllaDBDatacenter.
               properties:
+                certificateOptions:
+                  description: certificateOptions specify parameters related to customizing certificate configuration for ScyllaDBDatacenter.
+                  properties:
+                    clientCA:
+                      default:
+                        type: OperatorManaged
+                      description: clientCA references a client TLS certificate authority.
+                      properties:
+                        operatorManagedOptions:
+                          description: operatorManagedOptions specifies options for certificate authorities manged by the operator.
+                          type: object
+                        type:
+                          description: type determines the source of this certificate authority.
+                          type: string
+                        userManagedOptions:
+                          description: userManagedOptions specifies options for certificate authorities manged by users.
+                          properties:
+                            secretName:
+                              description: secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
+                              type: string
+                          type: object
+                      type: object
+                    servingCA:
+                      default:
+                        type: OperatorManaged
+                      description: servingCA references a TLS certificate authority for serving secure traffic.
+                      properties:
+                        operatorManagedOptions:
+                          description: operatorManagedOptions specifies options for certificate authorities manged by the operator.
+                          type: object
+                        type:
+                          description: type determines the source of this certificate authority.
+                          type: string
+                        userManagedOptions:
+                          description: userManagedOptions specifies options for certificate authorities manged by users.
+                          properties:
+                            secretName:
+                              description: secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
+                              type: string
+                          type: object
+                      type: object
+                  type: object
                 clusterName:
                   description: clusterName specifies the name of the ScyllaDB cluster. When joining two DCs, their cluster name must match. This field is immutable.
                   type: string
