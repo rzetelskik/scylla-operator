@@ -148,44 +148,97 @@ func (sdcc *Controller) syncCerts(
 
 	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
 		// Manage client certificates.
-		errs = append(errs, cm.ManageCertificates(
-			ctx,
-			time.Now,
-			&sdc.ObjectMeta,
-			scyllaDBDatacenterControllerGVK,
-			&okubecrypto.CAConfig{
+
+		caBundleConfig := &okubecrypto.CABundleConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   naming.GetScyllaClusterLocalClientCAName(sdc.Name),
+				Labels: clusterLabels,
+			},
+		}
+		certConfigs := []*okubecrypto.CertificateConfig{
+			{
 				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalClientCAName(sdc.Name),
+					Name:   naming.GetScyllaClusterLocalUserAdminCertName(sdc.Name),
 					Labels: clusterLabels,
 				},
 				Validity: 10 * 365 * 24 * time.Hour,
 				Refresh:  8 * 365 * 24 * time.Hour,
+				CertCreator: (&ocrypto.ClientCertCreatorConfig{
+					Subject: pkix.Name{
+						CommonName: "",
+					},
+					DNSNames: []string{"admin"},
+				}).ToCreator(),
 			},
-			&okubecrypto.CABundleConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalClientCAName(sdc.Name),
-					Labels: clusterLabels,
-				},
-			},
-			[]*okubecrypto.CertificateConfig{
-				{
+		}
+
+		clientCATLSCertificateType := scyllav1alpha1.TLSCertificateAuthorityTypeOperatorManaged
+		if sdc.Spec.CertificateOptions != nil && sdc.Spec.CertificateOptions.ClientCA != nil {
+			clientCATLSCertificateType = sdc.Spec.CertificateOptions.ClientCA.Type
+		}
+
+		switch clientCATLSCertificateType {
+		case scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged:
+			var clientCASecret *corev1.Secret
+
+			clientCASecretName := sdc.Spec.CertificateOptions.ClientCA.UserManagedOptions.SecretName
+			clientCASecret, err = sdcc.secretLister.Secrets(sdc.Namespace).Get(clientCASecretName)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return progressingConditions, fmt.Errorf("can't get client CA secret %q: %w", naming.ManualRef(sdc.Namespace, clientCASecretName), err)
+				}
+
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               certControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             internalapi.ProgressingReason,
+					Message:            fmt.Sprintf("waiting for client CA secret %q to be created", naming.ManualRef(sdc.Namespace, clientCASecretName)),
+					ObservedGeneration: sdc.Generation,
+				})
+				break
+			}
+
+			signingTLSSecretFunc := func(ctx context.Context, nowFunc func() time.Time) (*okubecrypto.SigningTLSSecret, error) {
+				tlsSecret := okubecrypto.NewTLSSecret(clientCASecret)
+				return okubecrypto.NewSigningTLSSecret(tlsSecret, nowFunc), nil
+			}
+
+			errs = append(errs, cm.ManageCertificatesWithSigningTLSSecretFunc(
+				ctx,
+				time.Now,
+				&sdc.ObjectMeta,
+				scyllaDBDatacenterControllerGVK,
+				signingTLSSecretFunc,
+				caBundleConfig,
+				certConfigs,
+				secrets,
+				configMaps,
+			))
+
+		case scyllav1alpha1.TLSCertificateAuthorityTypeOperatorManaged:
+			errs = append(errs, cm.ManageCertificates(
+				ctx,
+				time.Now,
+				&sdc.ObjectMeta,
+				scyllaDBDatacenterControllerGVK,
+				&okubecrypto.CAConfig{
 					MetaConfig: okubecrypto.MetaConfig{
-						Name:   naming.GetScyllaClusterLocalUserAdminCertName(sdc.Name),
+						Name:   naming.GetScyllaClusterLocalClientCAName(sdc.Name),
 						Labels: clusterLabels,
 					},
 					Validity: 10 * 365 * 24 * time.Hour,
 					Refresh:  8 * 365 * 24 * time.Hour,
-					CertCreator: (&ocrypto.ClientCertCreatorConfig{
-						Subject: pkix.Name{
-							CommonName: "",
-						},
-						DNSNames: []string{"admin"},
-					}).ToCreator(),
 				},
-			},
-			secrets,
-			configMaps,
-		))
+				caBundleConfig,
+				certConfigs,
+				secrets,
+				configMaps,
+			))
+
+		default:
+			errs = append(errs, fmt.Errorf("unsupported TLS certificate type for client CA: %q", clientCATLSCertificateType))
+
+		}
 	}
 
 	// Manage serving certificates.
@@ -348,45 +401,99 @@ func (sdcc *Controller) syncCerts(
 	}
 
 	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-		errs = append(errs, cm.ManageCertificates(
-			ctx,
-			time.Now,
-			&sdc.ObjectMeta,
-			scyllaDBDatacenterControllerGVK,
-			&okubecrypto.CAConfig{
+		// Manage serving certificates.
+
+		caBundleConfig := &okubecrypto.CABundleConfig{
+			MetaConfig: okubecrypto.MetaConfig{
+				Name:   naming.GetScyllaClusterLocalServingCAName(sdc.Name),
+				Labels: clusterLabels,
+			},
+		}
+		certConfigs := []*okubecrypto.CertificateConfig{
+			{
 				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalServingCAName(sdc.Name),
+					Name:   naming.GetScyllaClusterLocalServingCertName(sdc.Name),
 					Labels: clusterLabels,
 				},
-				Validity: 10 * 365 * 24 * time.Hour,
-				Refresh:  8 * 365 * 24 * time.Hour,
+				Validity: 30 * 24 * time.Hour,
+				Refresh:  20 * 24 * time.Hour,
+				CertCreator: (&ocrypto.ServingCertCreatorConfig{
+					Subject: pkix.Name{
+						CommonName: "",
+					},
+					IPAddresses: ipAddresses,
+					DNSNames:    servingDNSNames,
+				}).ToCreator(),
 			},
-			&okubecrypto.CABundleConfig{
-				MetaConfig: okubecrypto.MetaConfig{
-					Name:   naming.GetScyllaClusterLocalServingCAName(sdc.Name),
-					Labels: clusterLabels,
-				},
-			},
-			[]*okubecrypto.CertificateConfig{
-				{
+		}
+
+		servingCATLSCertificateType := scyllav1alpha1.TLSCertificateAuthorityTypeOperatorManaged
+		if sdc.Spec.CertificateOptions != nil && sdc.Spec.CertificateOptions.ServingCA != nil {
+			servingCATLSCertificateType = sdc.Spec.CertificateOptions.ServingCA.Type
+		}
+
+		switch servingCATLSCertificateType {
+		case scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged:
+			var servingCASecret *corev1.Secret
+
+			servingCASecretName := sdc.Spec.CertificateOptions.ServingCA.UserManagedOptions.SecretName
+			servingCASecret, err = sdcc.secretLister.Secrets(sdc.Namespace).Get(servingCASecretName)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return progressingConditions, fmt.Errorf("can't get serving CA secret %q: %w", naming.ManualRef(sdc.Namespace, servingCASecretName), err)
+				}
+
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               certControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             internalapi.ProgressingReason,
+					Message:            fmt.Sprintf("waiting for serving CA secret %q to be created", naming.ManualRef(sdc.Namespace, servingCASecretName)),
+					ObservedGeneration: sdc.Generation,
+				})
+				break
+			}
+
+			signingTLSSecretFunc := func(ctx context.Context, nowFunc func() time.Time) (*okubecrypto.SigningTLSSecret, error) {
+				tlsSecret := okubecrypto.NewTLSSecret(servingCASecret)
+				return okubecrypto.NewSigningTLSSecret(tlsSecret, nowFunc), nil
+			}
+
+			errs = append(errs, cm.ManageCertificatesWithSigningTLSSecretFunc(
+				ctx,
+				time.Now,
+				&sdc.ObjectMeta,
+				scyllaDBDatacenterControllerGVK,
+				signingTLSSecretFunc,
+				caBundleConfig,
+				certConfigs,
+				secrets,
+				configMaps,
+			))
+
+		case scyllav1alpha1.TLSCertificateAuthorityTypeOperatorManaged:
+			errs = append(errs, cm.ManageCertificates(
+				ctx,
+				time.Now,
+				&sdc.ObjectMeta,
+				scyllaDBDatacenterControllerGVK,
+				&okubecrypto.CAConfig{
 					MetaConfig: okubecrypto.MetaConfig{
-						Name:   naming.GetScyllaClusterLocalServingCertName(sdc.Name),
+						Name:   naming.GetScyllaClusterLocalServingCAName(sdc.Name),
 						Labels: clusterLabels,
 					},
-					Validity: 30 * 24 * time.Hour,
-					Refresh:  20 * 24 * time.Hour,
-					CertCreator: (&ocrypto.ServingCertCreatorConfig{
-						Subject: pkix.Name{
-							CommonName: "",
-						},
-						IPAddresses: ipAddresses,
-						DNSNames:    servingDNSNames,
-					}).ToCreator(),
+					Validity: 10 * 365 * 24 * time.Hour,
+					Refresh:  8 * 365 * 24 * time.Hour,
 				},
-			},
-			secrets,
-			configMaps,
-		))
+				caBundleConfig,
+				certConfigs,
+				secrets,
+				configMaps,
+			))
+
+		default:
+			errs = append(errs, fmt.Errorf("unsupported TLS certificate type for serving CA: %q", servingCATLSCertificateType))
+
+		}
 
 		// Build connection bundle.
 
