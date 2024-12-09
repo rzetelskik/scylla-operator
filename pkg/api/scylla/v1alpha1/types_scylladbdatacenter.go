@@ -88,6 +88,10 @@ type ScyllaDBDatacenterSpec struct {
 	// about readiness gates.
 	// +optional
 	ReadinessGates []corev1.PodReadinessGate `json:"readinessGates,omitempty"`
+
+	// certificateOptions specify parameters related to customizing certificate configuration for ScyllaDBDatacenter.
+	// +optional
+	CertificateOptions *CertificateOptions `json:"certificateOptions,omitempty"`
 }
 
 type ObjectTemplateMetadata struct {
@@ -175,6 +179,46 @@ type RackSpec struct {
 	// name specifies the name of the ScyllaDB Rack. Used as rack name in GossipingPropertyFileSnitch.
 	// This field is immutable.
 	Name string `json:"name"`
+}
+
+type TLSCertificateAuthorityType string
+
+const (
+	TLSCertificateAuthorityTypeOperatorManaged TLSCertificateAuthorityType = "OperatorManaged"
+	TLSCertificateAuthorityTypeUserManaged     TLSCertificateAuthorityType = "UserManaged"
+)
+
+type UserManagedTLSCertificateAuthorityOptions struct {
+	// secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
+	SecretName string `json:"secretName"`
+}
+
+type OperatorManagedTLSCertificateAuthorityOptions struct {
+}
+
+type TLSCertificateAuthority struct {
+	// type determines the source of this certificate authority.
+	Type TLSCertificateAuthorityType `json:"type"`
+
+	// userManagedOptions specifies options for certificate authorities manged by users.
+	// +optional
+	UserManagedOptions *UserManagedTLSCertificateAuthorityOptions `json:"userManagedOptions,omitempty"`
+
+	// operatorManagedOptions specifies options for certificate authorities manged by the operator.
+	// +optional
+	OperatorManagedOptions *OperatorManagedTLSCertificateAuthorityOptions `json:"operatorManagedOptions,omitempty"`
+}
+
+type CertificateOptions struct {
+	// servingCA references a TLS certificate authority for serving secure traffic.
+	// +kubebuilder:default:={type:"OperatorManaged"}
+	// +optional
+	ServingCA *TLSCertificateAuthority `json:"servingCA,omitempty"`
+
+	// clientCA references a client TLS certificate authority.
+	// +kubebuilder:default:={type:"OperatorManaged"}
+	// +optional
+	ClientCA *TLSCertificateAuthority `json:"clientCA,omitempty"`
 }
 
 // ScyllaDB holds configuration options related to ScyllaDB.
