@@ -75,6 +75,9 @@ object
    * - Property
      - Type
      - Description
+   * - :ref:`certificateOptions<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions>`
+     - object
+     - certificateOptions specify parameters related to customizing certificate configuration for ScyllaDBDatacenter.
    * - clusterName
      - string
      - clusterName specifies the name of the ScyllaDB cluster. When joining two DCs, their cluster name must match. This field is immutable.
@@ -123,6 +126,174 @@ object
    * - :ref:`scyllaDBManagerAgent<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.scyllaDBManagerAgent>`
      - object
      - scyllaDBManagerAgent holds a specification of ScyllaDB Manager Agent.
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions:
+
+.spec.certificateOptions
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+certificateOptions specify parameters related to customizing certificate configuration for ScyllaDBDatacenter.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`clientCA<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.clientCA>`
+     - object
+     - clientCA references a client TLS certificate authority.
+   * - :ref:`servingCA<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.servingCA>`
+     - object
+     - servingCA references a TLS certificate authority for serving secure traffic.
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.clientCA:
+
+.spec.certificateOptions.clientCA
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+clientCA references a client TLS certificate authority.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`operatorManagedOptions<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.clientCA.operatorManagedOptions>`
+     - object
+     - operatorManagedOptions specifies options for certificate authorities manged by the operator.
+   * - type
+     - string
+     - type determines the source of this certificate authority.
+   * - :ref:`userManagedOptions<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.clientCA.userManagedOptions>`
+     - object
+     - userManagedOptions specifies options for certificate authorities manged by users.
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.clientCA.operatorManagedOptions:
+
+.spec.certificateOptions.clientCA.operatorManagedOptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+operatorManagedOptions specifies options for certificate authorities manged by the operator.
+
+Type
+""""
+object
+
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.clientCA.userManagedOptions:
+
+.spec.certificateOptions.clientCA.userManagedOptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+userManagedOptions specifies options for certificate authorities manged by users.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - secretName
+     - string
+     - secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.servingCA:
+
+.spec.certificateOptions.servingCA
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+servingCA references a TLS certificate authority for serving secure traffic.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`operatorManagedOptions<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.servingCA.operatorManagedOptions>`
+     - object
+     - operatorManagedOptions specifies options for certificate authorities manged by the operator.
+   * - type
+     - string
+     - type determines the source of this certificate authority.
+   * - :ref:`userManagedOptions<api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.servingCA.userManagedOptions>`
+     - object
+     - userManagedOptions specifies options for certificate authorities manged by users.
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.servingCA.operatorManagedOptions:
+
+.spec.certificateOptions.servingCA.operatorManagedOptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+operatorManagedOptions specifies options for certificate authorities manged by the operator.
+
+Type
+""""
+object
+
+
+.. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.certificateOptions.servingCA.userManagedOptions:
+
+.spec.certificateOptions.servingCA.userManagedOptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+userManagedOptions specifies options for certificate authorities manged by users.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - secretName
+     - string
+     - secretName references a kubernetes.io/tls type secret containing the TLS cert and key.
 
 .. _api-scylla.scylladb.com-scylladbdatacenters-v1alpha1-.spec.exposeOptions:
 
