@@ -558,19 +558,37 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 								{
 									Name: scylladbServingCertsVolumeName,
 									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: naming.GetScyllaClusterLocalServingCertName(sdc.Name),
-										},
+										Secret: func() *corev1.SecretVolumeSource {
+											secretVolumeSource := &corev1.SecretVolumeSource{
+												SecretName: naming.GetScyllaClusterLocalServingCertName(sdc.Name),
+											}
+
+											// User managed serving CA can be provided at a later time, in which case the serving cert won't be available and needs to be optional.
+											if sdc.Spec.CertificateOptions.ServingCA.Type == scyllav1alpha1.TLSCertificateTypeUserManaged {
+												secretVolumeSource.Optional = pointer.Ptr(true)
+											}
+
+											return secretVolumeSource
+										}(),
 									},
 								},
 								{
 									Name: scylladbClientCAVolumeName,
 									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: naming.GetScyllaClusterLocalClientCAName(sdc.Name),
-											},
-										},
+										ConfigMap: func() *corev1.ConfigMapVolumeSource {
+											configMapVolumeSource := &corev1.ConfigMapVolumeSource{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: naming.GetScyllaClusterLocalClientCAName(sdc.Name),
+												},
+											}
+
+											// User managed client CA can be provided at a later time, in which case the client CA won't be available and needs to be optional.
+											if sdc.Spec.CertificateOptions.ServingCA.Type == scyllav1alpha1.TLSCertificateTypeUserManaged {
+												configMapVolumeSource.Optional = pointer.Ptr(true)
+											}
+
+											return configMapVolumeSource
+										}(),
 									},
 								},
 								{
@@ -659,8 +677,15 @@ printf 'INFO %s ignition - Waiting for /mnt/shared/ignition.done\n' "$( date '+%
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
 done
-printf 'INFO %s ignition - Ignited. Starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+printf 'INFO %s ignition - Ignited.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 
+printf 'INFO %s certs - Waiting for certs to be set up\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+until [[ -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt" && -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key" && -f "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt" ]]; do
+  sleep 1;
+done
+printf 'INFO %s certs - Certs are set up.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+
+printf 'INFO %s starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 # TODO: This is where we should start ScyllaDB directly after the sidecar split #1942 
 exec /mnt/shared/scylla-operator sidecar \
 --feature-gates=` + func() string {
