@@ -399,7 +399,7 @@ func (sdcc *Controller) deleteService(obj interface{}) {
 func (sdcc *Controller) addSecret(obj interface{}) {
 	sdcc.handlers.HandleAdd(
 		obj.(*corev1.Secret),
-		sdcc.handlers.EnqueueOwner,
+		sdcc.enqueueSecretOwnerOrAllUsingItAsCA,
 	)
 }
 
@@ -407,7 +407,7 @@ func (sdcc *Controller) updateSecret(old, cur interface{}) {
 	sdcc.handlers.HandleUpdate(
 		old.(*corev1.Secret),
 		cur.(*corev1.Secret),
-		sdcc.handlers.EnqueueOwner,
+		sdcc.enqueueSecretOwnerOrAllUsingItAsCA,
 		sdcc.deleteSecret,
 	)
 }
@@ -415,7 +415,7 @@ func (sdcc *Controller) updateSecret(old, cur interface{}) {
 func (sdcc *Controller) deleteSecret(obj interface{}) {
 	sdcc.handlers.HandleDelete(
 		obj,
-		sdcc.handlers.EnqueueOwner,
+		sdcc.enqueueSecretOwnerOrAllUsingItAsCA,
 	)
 }
 
@@ -624,4 +624,37 @@ func (sdcc *Controller) deleteJob(obj interface{}) {
 		obj,
 		sdcc.handlers.EnqueueOwner,
 	)
+}
+
+func (sdcc *Controller) enqueueSecretOwnerOrAllUsingItAsCA(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	secret := obj.(*corev1.Secret)
+
+	sdc := sdcc.resolveScyllaDBDatacenterController(secret)
+	if sdc != nil {
+		sdcc.handlers.Enqueue(depth+1, sdc, op)
+		return
+	}
+
+	secretName := secret.GetName()
+	isUserManagedCAOfScyllaDBDatacenter := func(sdc *scyllav1alpha1.ScyllaDBDatacenter) bool {
+		if sdc.GetNamespace() != secret.GetNamespace() {
+			return false
+		}
+
+		if sdc.Spec.CertificateOptions == nil {
+			return false
+		}
+
+		if sdc.Spec.CertificateOptions.ClientCA.Type == scyllav1alpha1.TLSCertificateTypeUserManaged && sdc.Spec.CertificateOptions.ClientCA.UserManagedOptions.SecretName == secretName {
+			return true
+		}
+
+		if sdc.Spec.CertificateOptions.ServingCA.Type == scyllav1alpha1.TLSCertificateTypeUserManaged && sdc.Spec.CertificateOptions.ServingCA.UserManagedOptions.SecretName == secretName {
+			return true
+		}
+
+		return false
+	}
+
+	sdcc.handlers.EnqueueAllFunc(sdcc.handlers.EnqueueWithFilterFunc(isUserManagedCAOfScyllaDBDatacenter))(depth+1, obj, op)
 }

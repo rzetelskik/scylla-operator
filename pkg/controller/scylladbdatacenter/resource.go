@@ -558,19 +558,37 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 								{
 									Name: scylladbServingCertsVolumeName,
 									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: naming.GetScyllaClusterLocalServingCertName(sdc.Name),
-										},
+										Secret: func() *corev1.SecretVolumeSource {
+											secretVolumeSource := &corev1.SecretVolumeSource{
+												SecretName: naming.GetScyllaClusterLocalServingCertName(sdc.Name),
+											}
+
+											// User managed serving CA can be provided at a later time, in which case the serving cert won't be available and needs to be optional.
+											if sdc.Spec.CertificateOptions != nil && sdc.Spec.CertificateOptions.ServingCA != nil && sdc.Spec.CertificateOptions.ServingCA.Type == scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged {
+												secretVolumeSource.Optional = pointer.Ptr(true)
+											}
+
+											return secretVolumeSource
+										}(),
 									},
 								},
 								{
 									Name: scylladbClientCAVolumeName,
 									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: naming.GetScyllaClusterLocalClientCAName(sdc.Name),
-											},
-										},
+										ConfigMap: func() *corev1.ConfigMapVolumeSource {
+											configMapVolumeSource := &corev1.ConfigMapVolumeSource{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: naming.GetScyllaClusterLocalClientCAName(sdc.Name),
+												},
+											}
+
+											// User managed client CA can be provided at a later time, in which case the client CA won't be available and needs to be optional.
+											if sdc.Spec.CertificateOptions != nil && sdc.Spec.CertificateOptions.ClientCA != nil && sdc.Spec.CertificateOptions.ClientCA.Type == scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged {
+												configMapVolumeSource.Optional = pointer.Ptr(true)
+											}
+
+											return configMapVolumeSource
+										}(),
 									},
 								},
 								{
@@ -659,8 +677,19 @@ printf 'INFO %s ignition - Waiting for /mnt/shared/ignition.done\n' "$( date '+%
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
 done
-printf 'INFO %s ignition - Ignited. Starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
-
+printf 'INFO %s ignition - Ignited.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+` + func() string {
+										if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+											return `printf 'INFO %s certs - Waiting for certs to be set up\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+until [[ -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt" && -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key" && -f "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt" ]]; do
+  sleep 1;
+done
+printf 'INFO %s certs - Certs are set up.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+`
+										}
+										return ""
+									}() + `\
+printf 'INFO %s starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 # TODO: This is where we should start ScyllaDB directly after the sidecar split #1942 
 exec /mnt/shared/scylla-operator sidecar \
 --feature-gates=` + func() string {
@@ -871,14 +900,26 @@ wait
 							Name:            "scylladb-api-status-probe",
 							Image:           sidecarImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"/usr/bin/scylla-operator",
-								"serve-probes",
-								"scylladb-api-status",
-								fmt.Sprintf("--port=%d", naming.ScyllaDBAPIStatusProbePort),
-								"--service-name=$(SERVICE_NAME)",
-								fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
-							},
+							Command: func() []string {
+								cmd := []string{
+									"/usr/bin/scylla-operator",
+									"serve-probes",
+									"scylladb-api-status",
+									fmt.Sprintf("--port=%d", naming.ScyllaDBAPIStatusProbePort),
+									"--service-name=$(SERVICE_NAME)",
+									fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
+								}
+
+								if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+									cmd = append(cmd, []string{
+										"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt",
+										"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key",
+										"--await-paths=/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt",
+									}...)
+								}
+
+								return cmd
+							}(),
 							Env: []corev1.EnvVar{
 								{
 									Name: "SERVICE_NAME",
@@ -909,6 +950,26 @@ wait
 									corev1.ResourceMemory: resource.MustParse("40Mi"),
 								},
 							},
+							VolumeMounts: func() []corev1.VolumeMount {
+								var mounts []corev1.VolumeMount
+
+								if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+									mounts = append(mounts, []corev1.VolumeMount{
+										{
+											Name:      scylladbServingCertsVolumeName,
+											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
+											ReadOnly:  true,
+										},
+										{
+											Name:      scylladbClientCAVolumeName,
+											MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
+											ReadOnly:  true,
+										},
+									}...)
+								}
+
+								return mounts
+							}(),
 						},
 						{
 							Name:            "scylladb-ignition",
