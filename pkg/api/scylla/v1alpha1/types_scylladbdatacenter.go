@@ -88,6 +88,10 @@ type ScyllaDBDatacenterSpec struct {
 	// about readiness gates.
 	// +optional
 	ReadinessGates []corev1.PodReadinessGate `json:"readinessGates,omitempty"`
+
+	// certificateOptions specify parameters related to customizing certificate configuration for ScyllaDBDatacenter.
+	// +optional
+	CertificateOptions *CertificateOptions `json:"certificateOptions,omitempty"`
 }
 
 type ObjectTemplateMetadata struct {
@@ -175,6 +179,18 @@ type RackSpec struct {
 	// name specifies the name of the ScyllaDB Rack. Used as rack name in GossipingPropertyFileSnitch.
 	// This field is immutable.
 	Name string `json:"name"`
+}
+
+type CertificateOptions struct {
+	// servingCA references a TLS certificate authority for serving secure traffic.
+	// +kubebuilder:default:={type:"OperatorManaged"}
+	// +optional
+	ServingCA *TLSCertificate `json:"servingCA,omitempty"`
+
+	// clientCA references a client TLS certificate authority.
+	// +kubebuilder:default:={type:"OperatorManaged"}
+	// +optional
+	ClientCA *TLSCertificate `json:"clientCA,omitempty"`
 }
 
 // ScyllaDB holds configuration options related to ScyllaDB.
