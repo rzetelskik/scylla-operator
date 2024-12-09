@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/features"
+	"github.com/scylladb/scylla-operator/pkg/helpers/slices"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
 	appsv1 "k8s.io/api/apps/v1"
@@ -735,8 +736,21 @@ until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1 &
   wait
 done
-printf 'INFO %s ignition - Ignited. Starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
-
+printf 'INFO %s ignition - Ignited.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+` + func() string {
+											if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+												return `
+printf 'INFO %s certs - Waiting for certs to be set up\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+until [[ -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt" && -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key" && -f "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt" ]]; do
+  sleep 1 &
+  wait
+done
+printf 'INFO %s certs - Certs are set up.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+`
+											}
+											return ""
+										}() + `
+printf 'INFO %s starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 # TODO: This is where we should start ScyllaDB directly after the sidecar split #1942 
 exec /mnt/shared/scylla-operator sidecar \
 --feature-gates=` + func() string {
@@ -901,14 +915,24 @@ wait`),
 								Name:            "scylladb-api-status-probe",
 								Image:           "scylladb/scylla-operator:latest",
 								ImagePullPolicy: corev1.PullIfNotPresent,
-								Command: []string{
-									"/usr/bin/scylla-operator",
-									"serve-probes",
-									"scylladb-api-status",
-									"--port=8080",
-									"--service-name=$(SERVICE_NAME)",
-									"--loglevel=0",
-								},
+								Command: func() []string {
+									cmd := []string{
+										"/usr/bin/scylla-operator",
+										"serve-probes",
+										"scylladb-api-status",
+										"--port=8080",
+										"--service-name=$(SERVICE_NAME)",
+										"--loglevel=0",
+									}
+									if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+										cmd = append(cmd, []string{
+											"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt",
+											"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key",
+											"--await-paths=/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt",
+										}...)
+									}
+									return cmd
+								}(),
 								Env: []corev1.EnvVar{
 									{
 										Name: "SERVICE_NAME",
@@ -919,6 +943,24 @@ wait`),
 										},
 									},
 								},
+								VolumeMounts: func() []corev1.VolumeMount {
+									var mounts []corev1.VolumeMount
+									if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+										mounts = append(mounts, []corev1.VolumeMount{
+											{
+												Name:      "scylladb-serving-certs",
+												MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
+												ReadOnly:  true,
+											},
+											{
+												Name:      "scylladb-client-ca",
+												MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
+												ReadOnly:  true,
+											},
+										}...)
+									}
+									return mounts
+								}(),
 								ReadinessProbe: &corev1.Probe{
 									TimeoutSeconds:   int32(30),
 									FailureThreshold: int32(1),
@@ -1547,6 +1589,75 @@ exec scylla-manager-agent \
 						ContainerPort: 8043,
 					},
 				)
+
+				return sts
+			}(),
+			expectedError: nil,
+		},
+		{
+			name: "new statefulset with user managed certificate options",
+			rack: newBasicRack(),
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+
+				sdc.Spec.CertificateOptions = &scyllav1alpha1.CertificateOptions{
+					ClientCA: &scyllav1alpha1.TLSCertificateAuthority{
+						Type: scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged,
+						UserManagedOptions: &scyllav1alpha1.UserManagedTLSCertificateAuthorityOptions{
+							SecretName: "basic-user-managed-client-ca",
+						},
+					},
+					ServingCA: &scyllav1alpha1.TLSCertificateAuthority{
+						Type: scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged,
+						UserManagedOptions: &scyllav1alpha1.UserManagedTLSCertificateAuthorityOptions{
+							SecretName: "basic-user-managed-serving-ca",
+						},
+					},
+				}
+
+				return sdc
+			}(),
+			existingStatefulSet: nil,
+			expectedStatefulSet: func() *appsv1.StatefulSet {
+				sts := newBasicStatefulSet()
+
+				if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+					tmplSpec := &sts.Spec.Template.Spec
+
+					_, scyllaDBServingCertsVolumeIndex, ok := slices.Find(tmplSpec.Volumes, func(volume corev1.Volume) bool {
+						return volume.Name == scylladbServingCertsVolumeName
+					})
+
+					if ok {
+						tmplSpec.Volumes[scyllaDBServingCertsVolumeIndex] = corev1.Volume{
+							Name: "scylladb-serving-certs",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: "basic-local-serving-certs",
+									Optional:   pointer.Ptr(true),
+								},
+							},
+						}
+					}
+
+					_, scyllaDBClientCAVolumeIndex, ok := slices.Find(tmplSpec.Volumes, func(volume corev1.Volume) bool {
+						return volume.Name == scylladbClientCAVolumeName
+					})
+
+					if ok {
+						tmplSpec.Volumes[scyllaDBClientCAVolumeIndex] = corev1.Volume{
+							Name: "scylladb-client-ca",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "basic-local-client-ca",
+									},
+									Optional: pointer.Ptr(true),
+								},
+							},
+						}
+					}
+				}
 
 				return sts
 			}(),
