@@ -72,6 +72,10 @@ func ValidateScyllaDBDatacenterSpec(spec *scyllav1alpha1.ScyllaDBDatacenterSpec,
 		allErrs = append(allErrs, apimachineryvalidation.ValidateNonnegativeField(int64(*spec.MinReadySeconds), fldPath.Child("minReadySeconds"))...)
 	}
 
+	if spec.CertificateOptions != nil {
+		allErrs = append(allErrs, ValidateScyllaDBDatacenterSpecCertificateOptions(spec.CertificateOptions, fldPath.Child("certificateOptions"))...)
+	}
+
 	return allErrs
 }
 
@@ -172,6 +176,70 @@ func ValidateScyllaDBDatacenterSpecExposeOptions(options *scyllav1alpha1.ExposeO
 
 	if options.BroadcastOptions != nil {
 		allErrs = append(allErrs, ValidateScyllaDBDatacenterSpecExposeOptionsNodeBroadcastOptions(options.BroadcastOptions, options.NodeService, fldPath.Child("broadcastOptions"))...)
+	}
+
+	return allErrs
+}
+
+func ValidateScyllaDBDatacenterSpecCertificateOptions(options *scyllav1alpha1.CertificateOptions, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if options.ServingCA != nil {
+		allErrs = append(allErrs, ValidateScyllaDBDatacenterTLSCertificateAuthority(options.ServingCA, false, fldPath.Child("servingCA"))...)
+	}
+
+	if options.ClientCA != nil {
+		allErrs = append(allErrs, ValidateScyllaDBDatacenterTLSCertificateAuthority(options.ClientCA, false, fldPath.Child("clientCA"))...)
+	}
+
+	return allErrs
+}
+
+func ValidateScyllaDBDatacenterTLSCertificateAuthority(certificateAuthority *scyllav1alpha1.TLSCertificateAuthority, requireUserManagedSecretName bool, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	switch certificateAuthority.Type {
+	case scyllav1alpha1.TLSCertificateAuthorityTypeOperatorManaged:
+		if certificateAuthority.OperatorManagedOptions == nil {
+			allErrs = append(allErrs, field.Required(fldPath.Child("operatorManagedOptions"), ""))
+		}
+
+	case scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged:
+		if certificateAuthority.UserManagedOptions != nil {
+			allErrs = append(allErrs, ValidateScyllaDBDatacenterUserManagedTLSCertificateAuthorityOptions(
+				certificateAuthority.UserManagedOptions,
+				requireUserManagedSecretName,
+				fldPath.Child("userManagedOptions"),
+			)...)
+		} else {
+			allErrs = append(allErrs, field.Required(fldPath.Child("userManagedOptions"), ""))
+		}
+
+	case "":
+		allErrs = append(allErrs, field.Required(fldPath.Child("type"), ""))
+
+	default:
+		allErrs = append(allErrs, field.NotSupported(
+			fldPath.Child("type"),
+			certificateAuthority.Type,
+			[]scyllav1alpha1.TLSCertificateAuthorityType{
+				scyllav1alpha1.TLSCertificateAuthorityTypeOperatorManaged,
+				scyllav1alpha1.TLSCertificateAuthorityTypeUserManaged,
+			},
+		))
+	}
+	return allErrs
+}
+
+func ValidateScyllaDBDatacenterUserManagedTLSCertificateAuthorityOptions(options *scyllav1alpha1.UserManagedTLSCertificateAuthorityOptions, requireSecretName bool, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if len(options.SecretName) != 0 {
+		for _, msg := range apimachineryvalidation.NameIsDNSSubdomain(options.SecretName, false) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("secretName"), options.SecretName, msg))
+		}
+	} else if requireSecretName {
+		allErrs = append(allErrs, field.Required(fldPath.Child("secretName"), ""))
 	}
 
 	return allErrs
@@ -351,6 +419,7 @@ func ValidateScyllaDBDatacenterUserManagedTLSCertificateOptions(options *scyllav
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("secretName"), options.SecretName, msg))
 		}
 	}
+
 	return allErrs
 }
 
