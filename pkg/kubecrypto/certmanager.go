@@ -139,10 +139,14 @@ func NewCertificateManager(
 	}
 }
 
-// ManageCertificates creates and manages the lifetime of a certificate chain. All certificates are automatically
-// recreated when their desired config changes. Certificates are automatically refreshed when they reach their refresh
-// interval, or 80% of their lifetime, whichever comes sooner.
-func (cm *CertificateManager) ManageCertificates(ctx context.Context, nowFunc func() time.Time, controller *metav1.ObjectMeta, controllerGVK schema.GroupVersionKind, caConfig *CAConfig, caBundleConfig *CABundleConfig, certConfigs []*CertificateConfig, existingSecrets map[string]*corev1.Secret, existingConfigMaps map[string]*corev1.ConfigMap) error {
+func (cm *CertificateManager) ManageSigningTLSSecret(
+	ctx context.Context,
+	nowFunc func() time.Time,
+	controller *metav1.ObjectMeta,
+	controllerGVK schema.GroupVersionKind,
+	caConfig *CAConfig,
+	existingSecrets map[string]*corev1.Secret,
+) (*SigningTLSSecret, error) {
 	caCertCreatorConfig := &ocrypto.CACertCreatorConfig{
 		Subject: pkix.Name{
 			CommonName: caConfig.Name,
@@ -150,7 +154,7 @@ func (cm *CertificateManager) ManageCertificates(ctx context.Context, nowFunc fu
 	}
 	caTLSSecret, err := MakeSelfSignedCA(ctx, caConfig.Name, caCertCreatorConfig.ToCreator(), cm.keyGetter, nowFunc, caConfig.Validity, caConfig.Refresh, controller, controllerGVK, existingSecrets[caConfig.Name])
 	if err != nil {
-		return fmt.Errorf("can't make selfsigned CA %q: %w", caConfig.Name, err)
+		return nil, fmt.Errorf("can't make selfsigned CA %q: %w", caConfig.Name, err)
 	}
 
 	caSecret := caTLSSecret.GetSecret()
@@ -159,10 +163,29 @@ func (cm *CertificateManager) ManageCertificates(ctx context.Context, nowFunc fu
 
 	updatedCASecret, caSecretChanged, err := resourceapply.ApplySecret(ctx, cm.secretsClient, cm.secretLister, cm.eventRecorder, caSecret, resourceapply.ApplyOptions{})
 	if err != nil {
-		return fmt.Errorf("can't apply secret %q: %w", naming.ObjRef(caSecret), err)
+		return nil, fmt.Errorf("can't apply secret %q: %w", naming.ObjRef(caSecret), err)
 	}
 	if caSecretChanged {
 		caTLSSecret.Refresh(updatedCASecret)
+	}
+
+	return caTLSSecret, nil
+}
+
+func (cm *CertificateManager) ManageCertificatesWithSigningTLSSecretFunc(
+	ctx context.Context,
+	nowFunc func() time.Time,
+	controller *metav1.ObjectMeta,
+	controllerGVK schema.GroupVersionKind,
+	signingTLSSecretFunc func(context.Context, func() time.Time) (*SigningTLSSecret, error),
+	caBundleConfig *CABundleConfig,
+	certConfigs []*CertificateConfig,
+	existingSecrets map[string]*corev1.Secret,
+	existingConfigMaps map[string]*corev1.ConfigMap,
+) error {
+	caTLSSecret, err := signingTLSSecretFunc(ctx, nowFunc)
+	if err != nil {
+		return fmt.Errorf("can't get signing TLS secret: %w", err)
 	}
 
 	caBundleCM, err := caTLSSecret.MakeCABundle(caBundleConfig.Name, controller, controllerGVK, existingConfigMaps[caBundleConfig.Name], nowFunc())
@@ -195,6 +218,34 @@ func (cm *CertificateManager) ManageCertificates(ctx context.Context, nowFunc fu
 	}
 
 	return nil
+}
+
+// ManageCertificates creates and manages the lifetime of a certificate chain. All certificates are automatically
+// recreated when their desired config changes. Certificates are automatically refreshed when they reach their refresh
+// interval, or 80% of their lifetime, whichever comes sooner.
+func (cm *CertificateManager) ManageCertificates(ctx context.Context, nowFunc func() time.Time, controller *metav1.ObjectMeta, controllerGVK schema.GroupVersionKind, caConfig *CAConfig, caBundleConfig *CABundleConfig, certConfigs []*CertificateConfig, existingSecrets map[string]*corev1.Secret, existingConfigMaps map[string]*corev1.ConfigMap) error {
+	signingTLSSecretFunc := func(ctx context.Context, nowFunc func() time.Time) (*SigningTLSSecret, error) {
+		return cm.ManageSigningTLSSecret(
+			ctx,
+			nowFunc,
+			controller,
+			controllerGVK,
+			caConfig,
+			existingSecrets,
+		)
+	}
+
+	return cm.ManageCertificatesWithSigningTLSSecretFunc(
+		ctx,
+		nowFunc,
+		controller,
+		controllerGVK,
+		signingTLSSecretFunc,
+		caBundleConfig,
+		certConfigs,
+		existingSecrets,
+		existingConfigMaps,
+	)
 }
 
 func (cm *CertificateManager) ManageCertificateChain(ctx context.Context, nowFunc func() time.Time, controller *metav1.ObjectMeta, controllerGVK schema.GroupVersionKind, certChainConfig *CertChainConfig, existingSecrets map[string]*corev1.Secret, existingConfigMaps map[string]*corev1.ConfigMap) error {
