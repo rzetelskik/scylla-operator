@@ -30,14 +30,14 @@ func (sdcc *Controller) sync(ctx context.Context, key string) error {
 	}
 
 	startTime := time.Now()
-	klog.V(4).InfoS("Started syncing ScyllaCluster", "ScyllaDBDatacenter", klog.KRef(namespace, name), "startTime", startTime)
+	klog.V(4).InfoS("Started syncing ScyllaDBDatacenter", "ScyllaDBDatacenter", klog.KRef(namespace, name), "startTime", startTime)
 	defer func() {
-		klog.V(4).InfoS("Finished syncing ScyllaCluster", "ScyllaDBDatacenter", klog.KRef(namespace, name), "duration", time.Since(startTime))
+		klog.V(4).InfoS("Finished syncing ScyllaDBDatacenter", "ScyllaDBDatacenter", klog.KRef(namespace, name), "duration", time.Since(startTime))
 	}()
 
 	sdc, err := sdcc.scyllaDBDatacenterLister.ScyllaDBDatacenters(namespace).Get(name)
 	if errors.IsNotFound(err) {
-		klog.V(2).InfoS("ScyllaCluster has been deleted", "ScyllaDBDatacenter", klog.KObj(sdc))
+		klog.V(2).InfoS("ScyllaDBDatacenter has been deleted", "ScyllaDBDatacenter", klog.KObj(sdc))
 		return nil
 	}
 	if err != nil {
@@ -281,6 +281,7 @@ func (sdcc *Controller) sync(ctx context.Context, key string) error {
 	// field (to allow determining cluster status without conditions) and wait for the status to be updated
 	// in a single place, on the next resync.
 	sdcc.setStatefulSetsAvailableStatusCondition(sdc, status)
+	sdcc.setPrewarmedStatusCondition(sdc, status, serviceMap)
 
 	err = controllerhelpers.RunSync(
 		&status.Conditions,

@@ -232,6 +232,14 @@ func FindScyllaContainerStatus(pod *corev1.Pod) *corev1.ContainerStatus {
 	return FindContainerStatus(pod, naming.ScyllaContainerName)
 }
 
+func FindScyllaDBIgnitionContainerStatus(pod *corev1.Pod) *corev1.ContainerStatus {
+	return FindContainerStatus(pod, naming.ScyllaDBIgnitionContainerName)
+}
+
+func FindDelayedVolumeMountContainerStatus(pod *corev1.Pod) *corev1.ContainerStatus {
+	return FindContainerStatus(pod, naming.DelayedVolumeMountContainerName)
+}
+
 func IsScyllaContainerRunning(pod *corev1.Pod) bool {
 	cs := FindScyllaContainerStatus(pod)
 	if cs == nil {
@@ -248,4 +256,22 @@ func GetScyllaContainerID(pod *corev1.Pod) (string, error) {
 	}
 
 	return cs.ContainerID, nil
+}
+
+func IsScyllaDBIgnitionContainerReady(pod *corev1.Pod) bool {
+	cs := FindScyllaDBIgnitionContainerStatus(pod)
+	if cs == nil {
+		return false
+	}
+
+	return cs.Ready
+}
+
+func IsDelayedVolumeMountContainerRunning(pod *corev1.Pod) bool {
+	cs := FindDelayedVolumeMountContainerStatus(pod)
+	if cs == nil {
+		return false
+	}
+
+	return cs.State.Running != nil
 }

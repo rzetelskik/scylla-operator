@@ -120,6 +120,7 @@ const (
 	PerftuneContainerName           = "perftune"
 	CleanupContainerName            = "cleanup"
 	RLimitsContainerName            = "rlimits"
+	DelayedVolumeMountContainerName = "delayed-volume-mount"
 
 	PVCTemplateName = "data"
 
@@ -241,4 +242,8 @@ const (
 
 const (
 	ForceVolumeSyncManagedHashAnnotation = "internal.scylla-operator.scylladb.com/force-volume-sync-managed-hash"
+)
+
+const (
+	DelayedVolumeMountAnnotation = "internal.scylla-operator.scylladb.com/delayed-volume-mount"
 )
