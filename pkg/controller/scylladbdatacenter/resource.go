@@ -438,6 +438,8 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 		return nil, fmt.Errorf("can't get rack %q node count of ScyllaDBDatacenter %q: %w", rack.Name, naming.ObjRef(sdc), err)
 	}
 
+	requiresDelayedVolumeMount := controllerhelpers.HasAnnotation(sdc, naming.DelayedVolumeMountAnnotation)
+
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        naming.StatefulSetNameForRack(rack, sdc),
@@ -613,6 +615,24 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 							})
 						}
 
+						if requiresDelayedVolumeMount {
+							volumes = append(volumes, corev1.Volume{
+								Name: "podinfo",
+								VolumeSource: corev1.VolumeSource{
+									DownwardAPI: &corev1.DownwardAPIVolumeSource{
+										Items: []corev1.DownwardAPIVolumeFile{
+											{
+												Path: "annotations",
+												FieldRef: &corev1.ObjectFieldSelector{
+													FieldPath: "metadata.annotations",
+												},
+											},
+										},
+									},
+								},
+							})
+						}
+
 						return volumes
 					}(),
 					Tolerations: placement.Tolerations,
@@ -645,430 +665,500 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 							},
 						},
 					},
-					Containers: []corev1.Container{
-						{
-							Name:            naming.ScyllaContainerName,
-							Image:           sdc.Spec.ScyllaDB.Image,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Ports:           scyllaContainerPorts,
-							// TODO: unprivileged entrypoint
-							Command: func() []string {
-								var positionalArgs []string
+					Containers: func() []corev1.Container {
+						containers := []corev1.Container{
+							{
+								Name:            naming.ScyllaContainerName,
+								Image:           sdc.Spec.ScyllaDB.Image,
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Ports:           scyllaContainerPorts,
+								// TODO: unprivileged entrypoint
+								Command: func() []string {
+									var positionalArgs []string
 
-								if len(sdc.Spec.ScyllaDB.AdditionalScyllaDBArguments) > 0 {
-									positionalArgs = append(positionalArgs, sdc.Spec.ScyllaDB.AdditionalScyllaDBArguments...)
-								}
+									if len(sdc.Spec.ScyllaDB.AdditionalScyllaDBArguments) > 0 {
+										positionalArgs = append(positionalArgs, sdc.Spec.ScyllaDB.AdditionalScyllaDBArguments...)
+									}
 
-								if sdc.Spec.ScyllaDB.EnableDeveloperMode != nil && *sdc.Spec.ScyllaDB.EnableDeveloperMode {
-									positionalArgs = append(positionalArgs, "--developer-mode=1")
-								} else {
-									positionalArgs = append(positionalArgs, "--developer-mode=0")
-								}
+									if sdc.Spec.ScyllaDB.EnableDeveloperMode != nil && *sdc.Spec.ScyllaDB.EnableDeveloperMode {
+										positionalArgs = append(positionalArgs, "--developer-mode=1")
+									} else {
+										positionalArgs = append(positionalArgs, "--developer-mode=0")
+									}
 
-								cmd := []string{
-									"/usr/bin/bash",
-									"-euEo",
-									"pipefail",
-									"-O",
-									"inherit_errexit",
-									"-c",
-									strings.TrimSpace(`
+									cmd := []string{
+										"/usr/bin/bash",
+										"-euEo",
+										"pipefail",
+										"-O",
+										"inherit_errexit",
+										"-c",
+										strings.TrimSpace(`
 printf 'INFO %s ignition - Waiting for /mnt/shared/ignition.done\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
 done
 printf 'INFO %s ignition - Ignited.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 ` + func() string {
-										if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-											return `printf 'INFO %s certs - Waiting for certs to be set up\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+											if requiresDelayedVolumeMount {
+												return strings.TrimSpace(`
+printf '{"L":"INFO","T":"%s","M":"Waiting for /mnt/shared/delayed-volume-mounting.done"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
+until [[ -f "/mnt/shared/delayed-volume-mounting.done" ]]; do
+  sleep 1;
+done
+printf '{"L":"INFO","T":"%s","M":"Delayed volume mounting done}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
+
+`)
+											}
+
+											return ""
+										}() + `\
+` + func() string {
+											if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+												return strings.TrimSpace(`
+printf 'INFO %s certs - Waiting for certs to be set up\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 until [[ -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt" && -f "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key" && -f "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt" ]]; do
   sleep 1;
 done
 printf 'INFO %s certs - Certs are set up.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
-`
-										}
-										return ""
-									}() + `\
+`)
+											}
+
+											return ""
+										}() + `\
 printf 'INFO %s starting ScyllaDB...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
 # TODO: This is where we should start ScyllaDB directly after the sidecar split #1942 
 exec /mnt/shared/scylla-operator sidecar \
 --feature-gates=` + func() string {
-										features := utilfeature.DefaultMutableFeatureGate.GetAll()
-										res := make([]string, 0, len(features))
-										for name := range features {
-											res = append(res, fmt.Sprintf("%s=%t", name, utilfeature.DefaultMutableFeatureGate.Enabled(name)))
-										}
-										sort.Strings(res)
-										return strings.Join(res, ",")
-									}() + ` \
+											features := utilfeature.DefaultMutableFeatureGate.GetAll()
+											res := make([]string, 0, len(features))
+											for name := range features {
+												res = append(res, fmt.Sprintf("%s=%t", name, utilfeature.DefaultMutableFeatureGate.Enabled(name)))
+											}
+											sort.Strings(res)
+											return strings.Join(res, ",")
+										}() + ` \
 --nodes-broadcast-address-type=` + func() string {
-										if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
-											return string(sdc.Spec.ExposeOptions.BroadcastOptions.Nodes.Type)
-										}
-										return string(scyllav1alpha1.BroadcastAddressTypeServiceClusterIP)
-									}() + ` \
+											if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
+												return string(sdc.Spec.ExposeOptions.BroadcastOptions.Nodes.Type)
+											}
+											return string(scyllav1alpha1.BroadcastAddressTypeServiceClusterIP)
+										}() + ` \
 --clients-broadcast-address-type=` + func() string {
-										if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
-											return string(sdc.Spec.ExposeOptions.BroadcastOptions.Clients.Type)
-										}
-										return string(scyllav1alpha1.BroadcastAddressTypeServiceClusterIP)
-									}() + ` \
+											if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
+												return string(sdc.Spec.ExposeOptions.BroadcastOptions.Clients.Type)
+											}
+											return string(scyllav1alpha1.BroadcastAddressTypeServiceClusterIP)
+										}() + ` \
 --service-name=$(SERVICE_NAME) \
 --cpu-count=$(CPU_COUNT) \
 ` + fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()) + ` \
 ` +
-										func() string {
-											var optionalArgs []string
+											func() string {
+												var optionalArgs []string
 
-											if len(sdc.Spec.ScyllaDB.ExternalSeeds) > 0 {
-												optionalArgs = append(optionalArgs, fmt.Sprintf("--external-seeds=%s", strings.Join(sdc.Spec.ScyllaDB.ExternalSeeds, ",")))
-											}
+												if len(sdc.Spec.ScyllaDB.ExternalSeeds) > 0 {
+													optionalArgs = append(optionalArgs, fmt.Sprintf("--external-seeds=%s", strings.Join(sdc.Spec.ScyllaDB.ExternalSeeds, ",")))
+												}
 
-											return strings.Join(optionalArgs, ` \`)
-										}() +
-										` -- "$@"`,
-									),
-								}
+												return strings.Join(optionalArgs, ` \`)
+											}() +
+											` -- "$@"`,
+										),
+									}
 
-								cmd = append(cmd, "--")
-								cmd = append(cmd, positionalArgs...)
+									cmd = append(cmd, "--")
+									cmd = append(cmd, positionalArgs...)
 
-								return cmd
-							}(),
-							Env: []corev1.EnvVar{
-								{
-									Name: "SERVICE_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
+									return cmd
+								}(),
+								Env: []corev1.EnvVar{
+									{
+										Name: "SERVICE_NAME",
+										ValueFrom: &corev1.EnvVarSource{
+											FieldRef: &corev1.ObjectFieldSelector{
+												FieldPath: "metadata.name",
+											},
+										},
+									},
+									{
+										Name: "CPU_COUNT",
+										ValueFrom: &corev1.EnvVarSource{
+											ResourceFieldRef: &corev1.ResourceFieldSelector{
+												ContainerName: naming.ScyllaContainerName,
+												Resource:      "limits.cpu",
+												Divisor:       resource.MustParse("1"),
+											},
 										},
 									},
 								},
-								{
-									Name: "CPU_COUNT",
-									ValueFrom: &corev1.EnvVarSource{
-										ResourceFieldRef: &corev1.ResourceFieldSelector{
-											ContainerName: naming.ScyllaContainerName,
-											Resource:      "limits.cpu",
-											Divisor:       resource.MustParse("1"),
-										},
-									},
-								},
-							},
-							Resources: func() corev1.ResourceRequirements {
-								if rack.ScyllaDB != nil && rack.ScyllaDB.Resources != nil {
-									return *rack.ScyllaDB.Resources
-								}
-								return corev1.ResourceRequirements{}
-							}(),
-							VolumeMounts: func() []corev1.VolumeMount {
-								mounts := []corev1.VolumeMount{
-									{
-										Name:      naming.PVCTemplateName,
-										MountPath: naming.DataDir,
-									},
-									{
-										Name:      "shared",
-										MountPath: naming.SharedDirName,
-									},
-									{
-										Name:      "scylla-config-volume",
-										MountPath: naming.ScyllaConfigDirName,
-										ReadOnly:  true,
-									},
-									{
-										Name:      "scylladb-managed-config",
-										MountPath: naming.ScyllaDBManagedConfigDir,
-										ReadOnly:  true,
-									},
-									{
-										Name:      "scylla-client-config-volume",
-										MountPath: naming.ScyllaClientConfigDirName,
-										ReadOnly:  true,
-									},
-								}
-
-								if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-									mounts = append(mounts, []corev1.VolumeMount{
+								Resources: func() corev1.ResourceRequirements {
+									if rack.ScyllaDB != nil && rack.ScyllaDB.Resources != nil {
+										return *rack.ScyllaDB.Resources
+									}
+									return corev1.ResourceRequirements{}
+								}(),
+								VolumeMounts: func() []corev1.VolumeMount {
+									mounts := []corev1.VolumeMount{
 										{
-											Name:      scylladbServingCertsVolumeName,
-											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
+											Name:      naming.PVCTemplateName,
+											MountPath: naming.DataDir,
+											MountPropagation: func() *corev1.MountPropagationMode {
+												mountPropagation := corev1.MountPropagationNone
+
+												if requiresDelayedVolumeMount {
+													mountPropagation = corev1.MountPropagationHostToContainer
+												}
+
+												return &mountPropagation
+											}(),
+										},
+										{
+											Name:      "shared",
+											MountPath: naming.SharedDirName,
+										},
+										{
+											Name:      "scylla-config-volume",
+											MountPath: naming.ScyllaConfigDirName,
 											ReadOnly:  true,
 										},
 										{
-											Name:      scylladbClientCAVolumeName,
-											MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
+											Name:      "scylladb-managed-config",
+											MountPath: naming.ScyllaDBManagedConfigDir,
 											ReadOnly:  true,
 										},
 										{
-											Name:      scylladbUserAdminVolumeName,
-											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/user-admin",
+											Name:      "scylla-client-config-volume",
+											MountPath: naming.ScyllaClientConfigDirName,
 											ReadOnly:  true,
 										},
-									}...)
-								}
+									}
 
-								if sdc.Spec.ScyllaDB.AlternatorOptions != nil {
-									mounts = append(mounts, corev1.VolumeMount{
-										Name:      scylladbAlternatorServingCertsVolumeName,
-										MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/alternator-serving-certs",
-										ReadOnly:  true,
-									})
-								}
+									if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+										mounts = append(mounts, []corev1.VolumeMount{
+											{
+												Name:      scylladbServingCertsVolumeName,
+												MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
+												ReadOnly:  true,
+											},
+											{
+												Name:      scylladbClientCAVolumeName,
+												MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
+												ReadOnly:  true,
+											},
+											{
+												Name:      scylladbUserAdminVolumeName,
+												MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/user-admin",
+												ReadOnly:  true,
+											},
+										}...)
+									}
 
-								return mounts
-							}(),
-							// Add CAP_SYS_NICE as instructed by scylla logs
-							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:  pointer.Ptr(rootUID),
-								RunAsGroup: pointer.Ptr(rootGID),
-								Capabilities: &corev1.Capabilities{
-									Add: []corev1.Capability{"SYS_NICE"},
-								},
-							},
-							StartupProbe: &corev1.Probe{
-								// Initial delay should be big, because scylla runs benchmarks
-								// to tune the IO settings.
-								// TODO: Lower the timeout when we fix probes. We have temporarily changed them from 5s
-								// to 30s to survive cluster overload.
-								// Relevant issue: https://github.com/scylladb/scylla-operator/issues/844
-								TimeoutSeconds:   int32(30),
-								FailureThreshold: int32(40),
-								PeriodSeconds:    int32(10),
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Port: intstr.FromInt(naming.ScyllaDBAPIStatusProbePort),
-										Path: naming.LivenessProbePath,
+									if sdc.Spec.ScyllaDB.AlternatorOptions != nil {
+										mounts = append(mounts, corev1.VolumeMount{
+											Name:      scylladbAlternatorServingCertsVolumeName,
+											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/alternator-serving-certs",
+											ReadOnly:  true,
+										})
+									}
+
+									return mounts
+								}(),
+								// Add CAP_SYS_NICE as instructed by scylla logs
+								SecurityContext: &corev1.SecurityContext{
+									RunAsUser:  pointer.Ptr(rootUID),
+									RunAsGroup: pointer.Ptr(rootGID),
+									Capabilities: &corev1.Capabilities{
+										Add: []corev1.Capability{"SYS_NICE"},
 									},
 								},
-							},
-							LivenessProbe: &corev1.Probe{
-								// TODO: Lower the timeout when we fix probes. Currently we need them raised
-								// 		 because scylla doesn't respond under load. (#844)
-								TimeoutSeconds:   int32(10),
-								FailureThreshold: int32(12),
-								PeriodSeconds:    int32(10),
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Port: intstr.FromInt(naming.ScyllaDBAPIStatusProbePort),
-										Path: naming.LivenessProbePath,
+								StartupProbe: &corev1.Probe{
+									// Initial delay should be big, because scylla runs benchmarks
+									// to tune the IO settings.
+									// TODO: Lower the timeout when we fix probes. We have temporarily changed them from 5s
+									// to 30s to survive cluster overload.
+									// Relevant issue: https://github.com/scylladb/scylla-operator/issues/844
+									TimeoutSeconds:   int32(30),
+									FailureThreshold: int32(40),
+									PeriodSeconds:    int32(10),
+									ProbeHandler: corev1.ProbeHandler{
+										HTTPGet: &corev1.HTTPGetAction{
+											Port: intstr.FromInt(naming.ScyllaDBAPIStatusProbePort),
+											Path: naming.LivenessProbePath,
+										},
 									},
 								},
-							},
-							ReadinessProbe: &corev1.Probe{
-								// TODO: Lower the timeout when we fix probes. We have temporarily changed them from 5s
-								// to 30s to survive cluster overload.
-								// Relevant issue: https://github.com/scylladb/scylla-operator/issues/844
-								TimeoutSeconds:   int32(30),
-								FailureThreshold: int32(readinessFailureThreshold),
-								PeriodSeconds:    int32(readinessPeriodSeconds),
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Port: intstr.FromInt(naming.ScyllaDBAPIStatusProbePort),
-										Path: naming.ReadinessProbePath,
+								LivenessProbe: &corev1.Probe{
+									// TODO: Lower the timeout when we fix probes. Currently we need them raised
+									// 		 because scylla doesn't respond under load. (#844)
+									TimeoutSeconds:   int32(10),
+									FailureThreshold: int32(12),
+									PeriodSeconds:    int32(10),
+									ProbeHandler: corev1.ProbeHandler{
+										HTTPGet: &corev1.HTTPGetAction{
+											Port: intstr.FromInt(naming.ScyllaDBAPIStatusProbePort),
+											Path: naming.LivenessProbePath,
+										},
 									},
 								},
-							},
-							// Before a Scylla Pod is stopped, execute nodetool drain to
-							// flush the memtable to disk, finish existing requests and stop listening for connections.
-							// Sleep is required to give chance to Load Balancers to acknowledge Pod going down with their
-							// probes.
-							Lifecycle: &corev1.Lifecycle{
-								PreStop: &corev1.LifecycleHandler{
-									Exec: &corev1.ExecAction{
-										Command: []string{
-											"/usr/bin/bash",
-											"-euExo",
-											"pipefail",
-											"-O",
-											"inherit_errexit",
-											"-c",
-											strings.TrimSpace(`
+								ReadinessProbe: &corev1.Probe{
+									// TODO: Lower the timeout when we fix probes. We have temporarily changed them from 5s
+									// to 30s to survive cluster overload.
+									// Relevant issue: https://github.com/scylladb/scylla-operator/issues/844
+									TimeoutSeconds:   int32(30),
+									FailureThreshold: int32(readinessFailureThreshold),
+									PeriodSeconds:    int32(readinessPeriodSeconds),
+									ProbeHandler: corev1.ProbeHandler{
+										HTTPGet: &corev1.HTTPGetAction{
+											Port: intstr.FromInt(naming.ScyllaDBAPIStatusProbePort),
+											Path: naming.ReadinessProbePath,
+										},
+									},
+								},
+								// Before a Scylla Pod is stopped, execute nodetool drain to
+								// flush the memtable to disk, finish existing requests and stop listening for connections.
+								// Sleep is required to give chance to Load Balancers to acknowledge Pod going down with their
+								// probes.
+								Lifecycle: &corev1.Lifecycle{
+									PreStop: &corev1.LifecycleHandler{
+										Exec: &corev1.ExecAction{
+											Command: []string{
+												"/usr/bin/bash",
+												"-euExo",
+												"pipefail",
+												"-O",
+												"inherit_errexit",
+												"-c",
+												strings.TrimSpace(`
 trap 'rm /mnt/shared/ignition.done' EXIT
 nodetool drain &
 sleep ` + strconv.Itoa(minTerminationGracePeriodSeconds) + ` &
 wait
 `),
+											},
 										},
 									},
 								},
 							},
-						},
-						{
-							// ScyllaDB doesn't provide readiness or liveness probe,
-							// so we use our own probe sidecar to expose such endpoints.
-							Name:            "scylladb-api-status-probe",
-							Image:           sidecarImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: func() []string {
-								cmd := []string{
+							{
+								// ScyllaDB doesn't provide readiness or liveness probe,
+								// so we use our own probe sidecar to expose such endpoints.
+								Name:            "scylladb-api-status-probe",
+								Image:           sidecarImage,
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Command: func() []string {
+									cmd := []string{
+										"/usr/bin/scylla-operator",
+										"serve-probes",
+										"scylladb-api-status",
+										fmt.Sprintf("--port=%d", naming.ScyllaDBAPIStatusProbePort),
+										"--service-name=$(SERVICE_NAME)",
+										fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
+									}
+
+									if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+										cmd = append(cmd, []string{
+											"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt",
+											"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key",
+											"--await-paths=/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt",
+										}...)
+									}
+
+									return cmd
+								}(),
+								Env: []corev1.EnvVar{
+									{
+										Name: "SERVICE_NAME",
+										ValueFrom: &corev1.EnvVarSource{
+											FieldRef: &corev1.ObjectFieldSelector{
+												FieldPath: "metadata.name",
+											},
+										},
+									},
+								},
+								ReadinessProbe: &corev1.Probe{
+									TimeoutSeconds:   int32(30),
+									FailureThreshold: int32(1),
+									PeriodSeconds:    int32(5),
+									ProbeHandler: corev1.ProbeHandler{
+										TCPSocket: &corev1.TCPSocketAction{
+											Port: intstr.FromInt32(naming.ScyllaDBAPIStatusProbePort),
+										},
+									},
+								},
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+								},
+								VolumeMounts: func() []corev1.VolumeMount {
+									var mounts []corev1.VolumeMount
+
+									if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+										mounts = append(mounts, []corev1.VolumeMount{
+											{
+												Name:      scylladbServingCertsVolumeName,
+												MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
+												ReadOnly:  true,
+											},
+											{
+												Name:      scylladbClientCAVolumeName,
+												MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
+												ReadOnly:  true,
+											},
+										}...)
+									}
+
+									return mounts
+								}(),
+							},
+							{
+								Name:            "scylladb-ignition",
+								Image:           sidecarImage,
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Command: []string{
 									"/usr/bin/scylla-operator",
-									"serve-probes",
-									"scylladb-api-status",
-									fmt.Sprintf("--port=%d", naming.ScyllaDBAPIStatusProbePort),
+									"run-ignition",
 									"--service-name=$(SERVICE_NAME)",
+									fmt.Sprintf("--nodes-broadcast-address-type=%s", func() scyllav1alpha1.BroadcastAddressType {
+										if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
+											return sdc.Spec.ExposeOptions.BroadcastOptions.Nodes.Type
+										}
+										return scyllav1alpha1.BroadcastAddressTypeServiceClusterIP
+									}()),
+									fmt.Sprintf("--clients-broadcast-address-type=%s", func() scyllav1alpha1.BroadcastAddressType {
+										if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
+											return sdc.Spec.ExposeOptions.BroadcastOptions.Clients.Type
+										}
+										return scyllav1alpha1.BroadcastAddressTypeServiceClusterIP
+									}()),
 									fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
-								}
+								},
+								Env: []corev1.EnvVar{
+									{
+										Name: "SERVICE_NAME",
+										ValueFrom: &corev1.EnvVarSource{
+											FieldRef: &corev1.ObjectFieldSelector{
+												FieldPath: "metadata.name",
+											},
+										},
+									},
+								},
+								ReadinessProbe: &corev1.Probe{
+									TimeoutSeconds:   int32(30),
+									FailureThreshold: int32(1),
+									PeriodSeconds:    int32(5),
+									ProbeHandler: corev1.ProbeHandler{
+										HTTPGet: &corev1.HTTPGetAction{
+											Port: intstr.FromInt32(naming.ScyllaDBIgnitionProbePort),
+											Path: naming.ReadinessProbePath,
+										},
+									},
+								},
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "shared",
+										MountPath: naming.SharedDirName,
+										ReadOnly:  false,
+									},
+								},
+							},
+							{
+								Name:            "force-volume-sync",
+								Image:           sidecarImage,
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Command: []string{
+									"/usr/bin/scylla-operator",
+									"run-forcevolumesync",
+									"--pod-name=$(POD_NAME)",
+									fmt.Sprintf("--volumes-to-sync=%s", strings.Join([]string{
+										scylladbServingCertsVolumeName,
+										scylladbClientCAVolumeName,
+										scylladbUserAdminVolumeName,
+									}, ",")),
+									fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
+								},
+								Env: []corev1.EnvVar{
+									{
+										Name: "POD_NAME",
+										ValueFrom: &corev1.EnvVarSource{
+											FieldRef: &corev1.ObjectFieldSelector{
+												FieldPath: "metadata.name",
+											},
+										},
+									},
+								},
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+								},
+							},
+						}
 
-								if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-									cmd = append(cmd, []string{
-										"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt",
-										"--await-paths=/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key",
-										"--await-paths=/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt",
-									}...)
-								}
+						if requiresDelayedVolumeMount {
+							waitForDelayedVolumeMountContainer := corev1.Container{
+								Name:            "wait-for-delayed-volume-mount",
+								Image:           "docker.io/rzetelskik/delayed-csi-driver:latest@sha256:362afb795e84cffbd232287745f54d63a453253483c9e0077068debe9618bcb4",
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Args: []string{
+									"wait",
+									"--annotations-file=/var/run/podinfo/annotations",
+									fmt.Sprintf("--volume=%s", naming.PVCTemplateName),
+									"--ready-file-path=/mnt/shared/delayed-volume-mounting.done",
+									"--sleep=true",
+									"--loglevel=4",
+								},
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "shared",
+										MountPath: naming.SharedDirName,
+										ReadOnly:  false,
+									},
+									{
+										Name:             "podinfo",
+										ReadOnly:         true,
+										MountPath:        "/var/run/podinfo",
+										MountPropagation: pointer.Ptr(corev1.MountPropagationHostToContainer),
+									},
+								},
+							}
 
-								return cmd
-							}(),
-							Env: []corev1.EnvVar{
-								{
-									Name: "SERVICE_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
-										},
-									},
-								},
-							},
-							ReadinessProbe: &corev1.Probe{
-								TimeoutSeconds:   int32(30),
-								FailureThreshold: int32(1),
-								PeriodSeconds:    int32(5),
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt32(naming.ScyllaDBAPIStatusProbePort),
-									},
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("40Mi"),
-								},
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("40Mi"),
-								},
-							},
-							VolumeMounts: func() []corev1.VolumeMount {
-								var mounts []corev1.VolumeMount
+							containers = append(containers, waitForDelayedVolumeMountContainer)
+						}
 
-								if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-									mounts = append(mounts, []corev1.VolumeMount{
-										{
-											Name:      scylladbServingCertsVolumeName,
-											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
-											ReadOnly:  true,
-										},
-										{
-											Name:      scylladbClientCAVolumeName,
-											MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
-											ReadOnly:  true,
-										},
-									}...)
-								}
-
-								return mounts
-							}(),
-						},
-						{
-							Name:            "scylladb-ignition",
-							Image:           sidecarImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"/usr/bin/scylla-operator",
-								"run-ignition",
-								"--service-name=$(SERVICE_NAME)",
-								fmt.Sprintf("--nodes-broadcast-address-type=%s", func() scyllav1alpha1.BroadcastAddressType {
-									if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
-										return sdc.Spec.ExposeOptions.BroadcastOptions.Nodes.Type
-									}
-									return scyllav1alpha1.BroadcastAddressTypeServiceClusterIP
-								}()),
-								fmt.Sprintf("--clients-broadcast-address-type=%s", func() scyllav1alpha1.BroadcastAddressType {
-									if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
-										return sdc.Spec.ExposeOptions.BroadcastOptions.Clients.Type
-									}
-									return scyllav1alpha1.BroadcastAddressTypeServiceClusterIP
-								}()),
-								fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "SERVICE_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
-										},
-									},
-								},
-							},
-							ReadinessProbe: &corev1.Probe{
-								TimeoutSeconds:   int32(30),
-								FailureThreshold: int32(1),
-								PeriodSeconds:    int32(5),
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Port: intstr.FromInt32(naming.ScyllaDBIgnitionProbePort),
-										Path: naming.ReadinessProbePath,
-									},
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("40Mi"),
-								},
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("40Mi"),
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "shared",
-									MountPath: naming.SharedDirName,
-									ReadOnly:  false,
-								},
-							},
-						},
-						{
-							Name:            "force-volume-sync",
-							Image:           sidecarImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"/usr/bin/scylla-operator",
-								"run-forcevolumesync",
-								"--pod-name=$(POD_NAME)",
-								fmt.Sprintf("--volumes-to-sync=%s", strings.Join([]string{
-									scylladbServingCertsVolumeName,
-									scylladbClientCAVolumeName,
-									scylladbUserAdminVolumeName,
-								}, ",")),
-								fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "POD_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
-										},
-									},
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("40Mi"),
-								},
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("10m"),
-									corev1.ResourceMemory: resource.MustParse("40Mi"),
-								},
-							},
-						},
-					},
+						return containers
+					}(),
 					ServiceAccountName: naming.MemberServiceAccountNameForScyllaDBDatacenter(sdc.Name),
 					Affinity: &corev1.Affinity{
 						NodeAffinity:    placement.NodeAffinity,
@@ -1273,6 +1363,8 @@ func sysctlInitContainer(sdc *scyllav1alpha1.ScyllaDBDatacenter, image string) (
 }
 
 func getScyllaDBManagerAgentContainer(r scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.Container, error) {
+	requiresDelayedVolumeMount := controllerhelpers.HasAnnotation(sdc, naming.DelayedVolumeMountAnnotation)
+
 	if sdc.Spec.ScyllaDBManagerAgent == nil {
 		return nil, nil
 	}
@@ -1298,8 +1390,23 @@ printf '{"L":"INFO","T":"%s","M":"Waiting for /mnt/shared/ignition.done"}\n' "$(
 until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1;
 done
-printf '{"L":"INFO","T":"%s","M":"Ignited. Starting ScyllaDB Manager Agent"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
+printf '{"L":"INFO","T":"%s","M":"Ignited}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 
+` + func() string {
+				if requiresDelayedVolumeMount {
+					return strings.TrimSpace(`
+printf '{"L":"INFO","T":"%s","M":"Waiting for /mnt/shared/delayed-volume-mounting.done"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
+until [[ -f "/mnt/shared/delayed-volume-mounting.done" ]]; do
+  sleep 1;
+done
+printf '{"L":"INFO","T":"%s","M":"Delayed volume mounting done}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
+`)
+				}
+
+				return ""
+			}() + ` \
+
+printf '{"L":"INFO","T":"%s","M":"Starting ScyllaDB Manager agent}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 scylla-manager-agent \
 -c ` + fmt.Sprintf("%q ", naming.ScyllaAgentConfigDefaultFile) + `\
 -c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName)) + `\
@@ -1323,6 +1430,15 @@ scylla-manager-agent \
 			{
 				Name:      naming.PVCTemplateName,
 				MountPath: naming.DataDir,
+				MountPropagation: func() *corev1.MountPropagationMode {
+					mountPropagation := corev1.MountPropagationNone
+
+					if requiresDelayedVolumeMount {
+						mountPropagation = corev1.MountPropagationHostToContainer
+					}
+
+					return &mountPropagation
+				}(),
 			},
 			{
 				Name:      scyllaAgentConfigVolumeName,
