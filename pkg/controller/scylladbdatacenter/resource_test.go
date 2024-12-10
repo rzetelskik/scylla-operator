@@ -1034,6 +1034,38 @@ wait`),
 								},
 							},
 							{
+								Name:            "force-volume-sync",
+								Image:           "scylladb/scylla-operator:latest",
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Command: []string{
+									"/usr/bin/scylla-operator",
+									"run-forcevolumesync",
+									"--pod-name=$(POD_NAME)",
+									"--volumes-to-sync=scylladb-serving-certs,scylladb-client-ca",
+									"--loglevel=0",
+								},
+								Env: []corev1.EnvVar{
+									{
+										Name: "POD_NAME",
+										ValueFrom: &corev1.EnvVarSource{
+											FieldRef: &corev1.ObjectFieldSelector{
+												FieldPath: "metadata.name",
+											},
+										},
+									},
+								},
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("10m"),
+										corev1.ResourceMemory: resource.MustParse("40Mi"),
+									},
+								},
+							},
+							{
 								Name:            "scylla-manager-agent",
 								Image:           "scylladb/scylla-manager-agent:latest",
 								ImagePullPolicy: corev1.PullIfNotPresent,
