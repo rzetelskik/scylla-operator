@@ -931,7 +931,14 @@ wait`),
 									},
 								},
 								VolumeMounts: func() []corev1.VolumeMount {
-									var mounts []corev1.VolumeMount
+									mounts := []corev1.VolumeMount{
+										{
+											Name:      "shared",
+											MountPath: "/mnt/shared",
+											ReadOnly:  true,
+										},
+									}
+
 									if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
 										mounts = append(mounts, []corev1.VolumeMount{
 											{
@@ -1071,8 +1078,9 @@ until [[ -f "/mnt/shared/ignition.done" ]]; do
   sleep 1 &
   wait
 done
-printf '{"L":"INFO","T":"%s","M":"Ignited. Starting ScyllaDB Manager Agent"}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
+printf '{"L":"INFO","T":"%s","M":"Ignited}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 
+printf '{"L":"INFO","T":"%s","M":"Starting ScyllaDB Manager agent}\n' "$( date -u '+%Y-%m-%dT%H:%M:%S,%3NZ' )" > /dev/stderr
 exec scylla-manager-agent \
 -c "/etc/scylla-manager-agent/scylla-manager-agent.yaml" \
 -c "/mnt/scylla-agent-config/scylla-manager-agent.yaml" \
@@ -1682,6 +1690,7 @@ exec scylla-manager-agent \
 			}(),
 			expectedError: nil,
 		},
+		// TODO(rzetelskik): add test for delayed volume mount
 	}
 
 	for _, tc := range tt {
