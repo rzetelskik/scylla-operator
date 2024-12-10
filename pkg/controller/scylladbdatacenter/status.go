@@ -5,10 +5,14 @@ import (
 	"fmt"
 
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
@@ -135,4 +139,56 @@ func (sdcc *Controller) calculateStatus(sdc *scyllav1alpha1.ScyllaDBDatacenter, 
 	updateAggregatedStatusFields(status)
 
 	return status
+}
+
+func (sdcc *Controller) setPrewarmedStatusCondition(sdc *scyllav1alpha1.ScyllaDBDatacenter, status *scyllav1alpha1.ScyllaDBDatacenterStatus, services map[string]*corev1.Service) {
+	prewarmed := true
+	for _, rack := range sdc.Spec.Racks {
+		rackNodeCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name)
+		if err != nil {
+			klog.ErrorS(err, "can't get rack node count", "ScyllaDBDatacenter", naming.ObjRef(sdc), "Rack", rack.Name)
+			prewarmed = false
+			break
+		}
+
+		for ord := int32(0); ord < *rackNodeCount; ord++ {
+			svcName := naming.MemberServiceName(rack, sdc, int(ord))
+			svc, exists := services[svcName]
+			if !exists {
+				klog.ErrorS(err, "service does not exist", "ScyllaDBDatacenter", naming.ObjRef(sdc), "Rack", rack.Name, "Service", naming.ManualRef(sdc.Namespace, svcName))
+				prewarmed = false
+				break
+			}
+
+			podName := naming.PodNameFromService(svc)
+			pod, err := sdcc.podLister.Pods(sdc.Namespace).Get(podName)
+			if err != nil {
+				klog.ErrorS(err, "can't get Pod", "ScyllaDBDatacenter", naming.ObjRef(sdc), "Rack", rack.Name, "Pod", naming.ManualRef(sdc.Namespace, podName))
+				prewarmed = false
+				break
+			}
+
+			if !controllerhelpers.IsScyllaDBIgnitionContainerReady(pod) || !controllerhelpers.IsDelayedVolumeMountContainerRunning(pod) {
+				prewarmed = false
+			}
+		}
+	}
+
+	if prewarmed {
+		apimeta.SetStatusCondition(&status.Conditions, metav1.Condition{
+			Type:               scyllav1alpha1.PrewarmedCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             internalapi.AsExpectedReason,
+			Message:            "",
+			ObservedGeneration: sdc.Generation,
+		})
+	} else {
+		apimeta.SetStatusCondition(&status.Conditions, metav1.Condition{
+			Type:               scyllav1alpha1.PrewarmedCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             "NotAllNodesPrewarmed",
+			Message:            "Not all nodes are prewarmed yet.",
+			ObservedGeneration: sdc.Generation,
+		})
+	}
 }

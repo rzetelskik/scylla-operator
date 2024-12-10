@@ -6,4 +6,5 @@ const (
 	AvailableCondition   = "Available"
 	ProgressingCondition = "Progressing"
 	DegradedCondition    = "Degraded"
+	PrewarmedCondition   = "Prewarmed"
 )
