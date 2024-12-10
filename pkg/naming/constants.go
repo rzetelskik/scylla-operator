@@ -238,3 +238,7 @@ const (
 	// nor should be taken into account when computing managed object hashes.
 	IgnoreInternalKeyPrefix = "ignore.internal.scylla-operator.scylladb.com"
 )
+
+const (
+	ForceVolumeSyncManagedHashAnnotation = "internal.scylla-operator.scylladb.com/force-volume-sync-managed-hash"
+)
