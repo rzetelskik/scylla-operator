@@ -1032,6 +1032,42 @@ wait
 								},
 							},
 						},
+						{
+							Name:            "force-volume-sync",
+							Image:           sidecarImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Command: []string{
+								"/usr/bin/scylla-operator",
+								"run-forcevolumesync",
+								"--pod-name=$(POD_NAME)",
+								fmt.Sprintf("--volumes-to-sync=%s", strings.Join([]string{
+									scylladbServingCertsVolumeName,
+									scylladbClientCAVolumeName,
+									scylladbUserAdminVolumeName,
+								}, ",")),
+								fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "POD_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("40Mi"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("40Mi"),
+								},
+							},
+						},
 					},
 					ServiceAccountName: naming.MemberServiceAccountNameForScyllaDBDatacenter(sdc.Name),
 					Affinity: &corev1.Affinity{
