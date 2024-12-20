@@ -38,7 +38,6 @@ const (
 	scyllaAgentAuthTokenVolumeName           = "scylla-agent-auth-token-volume"
 	scylladbServingCertsVolumeName           = "scylladb-serving-certs"
 	scylladbClientCAVolumeName               = "scylladb-client-ca"
-	scylladbUserAdminVolumeName              = "scylladb-user-admin"
 	scylladbAlternatorServingCertsVolumeName = "scylladb-alternator-serving-certs"
 )
 
@@ -591,14 +590,6 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 										}(),
 									},
 								},
-								{
-									Name: scylladbUserAdminVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: naming.GetScyllaClusterLocalUserAdminCertName(sdc.Name),
-										},
-									},
-								},
 							}...)
 						}
 						if sdc.Spec.ScyllaDB.AlternatorOptions != nil {
@@ -803,11 +794,6 @@ exec /mnt/shared/scylla-operator sidecar \
 										{
 											Name:      scylladbClientCAVolumeName,
 											MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
-											ReadOnly:  true,
-										},
-										{
-											Name:      scylladbUserAdminVolumeName,
-											MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/user-admin",
 											ReadOnly:  true,
 										},
 									}...)
