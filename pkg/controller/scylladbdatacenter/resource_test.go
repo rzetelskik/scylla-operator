@@ -639,14 +639,6 @@ func TestStatefulSetForRack(t *testing.T) {
 											},
 										},
 									},
-									{
-										Name: "scylladb-user-admin",
-										VolumeSource: corev1.VolumeSource{
-											Secret: &corev1.SecretVolumeSource{
-												SecretName: "basic-local-user-admin",
-											},
-										},
-									},
 								}...)
 							}
 
@@ -837,11 +829,6 @@ exec /mnt/shared/scylla-operator sidecar \
 											{
 												Name:      "scylladb-client-ca",
 												MountPath: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca",
-												ReadOnly:  true,
-											},
-											{
-												Name:      "scylladb-user-admin",
-												MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/user-admin",
 												ReadOnly:  true,
 											},
 										}...)
