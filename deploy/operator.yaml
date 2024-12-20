@@ -67,6 +67,7 @@ rules:
   - get
   - list
   - watch
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -27902,6 +27903,8 @@ rules:
   verbs:
   - get
   - list
+  - watch
+  - patch
 - apiGroups:
   - ""
   resources:
