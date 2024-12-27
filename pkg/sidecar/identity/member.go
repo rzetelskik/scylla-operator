@@ -78,6 +78,19 @@ func (m *Member) GetSeeds(ctx context.Context, coreClient v1.CoreV1Interface, ex
 	clusterLabels := naming.ScyllaLabels()
 	clusterLabels[naming.ClusterNameLabel] = m.Cluster
 
+	podOrdinal, err := naming.IndexFromName(m.Name)
+	if err != nil {
+		return nil, fmt.Errorf("can't get pod index from name: %w", err)
+	}
+
+	if m.RackOrdinal == 0 && podOrdinal == 0 {
+		if len(externalSeeds) > 0 {
+			return externalSeeds, nil
+		}
+
+		return []string{m.BroadcastAddress}, nil
+	}
+
 	podList, err := coreClient.Pods(m.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(clusterLabels).String(),
 	})
@@ -98,22 +111,7 @@ func (m *Member) GetSeeds(ctx context.Context, coreClient v1.CoreV1Interface, ex
 	}
 
 	if len(otherPods) == 0 {
-		// We are the only one, assuming first bootstrap.
-
-		podOrdinal, err := naming.IndexFromName(m.Name)
-		if err != nil {
-			return nil, fmt.Errorf("can't get pod index from name: %w", err)
-		}
-
-		if m.RackOrdinal != 0 || podOrdinal != 0 {
-			return nil, fmt.Errorf("pod is not first in the cluster, but there are no other pods")
-		}
-
-		if len(externalSeeds) > 0 {
-			return externalSeeds, nil
-		}
-
-		return []string{m.BroadcastAddress}, nil
+		return nil, fmt.Errorf("pod is not first in the cluster, but there are no other pods")
 	}
 
 	sort.Slice(otherPods, func(i, j int) bool {
