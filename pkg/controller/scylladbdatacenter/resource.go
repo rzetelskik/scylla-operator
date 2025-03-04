@@ -410,7 +410,7 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 	loadBalancerSyncPeriodSeconds := 60
 
 	readinessFailureThreshold := 1
-	readinessPeriodSeconds := 10
+	readinessPeriodSeconds := 1
 	minReadySeconds := kubeProxyEndpointsSyncPeriodSeconds
 	minTerminationGracePeriodSeconds := readinessFailureThreshold*readinessPeriodSeconds + kubeProxyEndpointsSyncPeriodSeconds
 
@@ -1419,13 +1419,6 @@ exec scylla-manager-agent \
 			{
 				Name:          "agent-rest-api",
 				ContainerPort: 10001,
-			},
-		},
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt32(10001),
-				},
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
