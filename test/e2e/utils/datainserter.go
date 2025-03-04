@@ -178,6 +178,12 @@ func (di *DataInserter) GetExpected() []*TestData {
 	return di.data
 }
 
+func (di *DataInserter) ForceSession(session *gocqlx.Session) {
+	di.Close()
+
+	di.session = session
+}
+
 func (di *DataInserter) createSession(hosts []string) error {
 	clusterConfig := gocql.NewCluster(hosts...)
 	// Set a small reconnect interval to avoid flakes, if not reconnected in time.
