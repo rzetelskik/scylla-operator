@@ -447,24 +447,6 @@ func (sdcc *Controller) createMissingStatefulSets(
 				continue
 			}
 		}
-
-		// Wait for the StatefulSet to roll out. Racks can only bootstrap one by one.
-		rolledOut, err := controllerhelpers.IsStatefulSetRolledOut(sts)
-		if err != nil {
-			return progressingConditions, err
-		}
-
-		if !rolledOut {
-			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDBDatacenter", klog.KObj(sdc), "StatefulSet", klog.KObj(sts))
-			progressingConditions = append(progressingConditions, metav1.Condition{
-				Type:               statefulSetControllerProgressingCondition,
-				Status:             metav1.ConditionTrue,
-				Reason:             "WaitingForStatefulSetRollout",
-				Message:            fmt.Sprintf("Waiting for StatefulSet %q to roll out.", naming.ObjRef(req)),
-				ObservedGeneration: sdc.Generation,
-			})
-			return progressingConditions, nil
-		}
 	}
 
 	return progressingConditions, utilerrors.NewAggregate(errs)
@@ -647,30 +629,6 @@ func (sdcc *Controller) syncStatefulSets(
 		return progressingConditions, err
 	}
 
-	// TODO: This blocks unstucking by an update.
-	//  	 Also blocks lowering resources when the cluster is running low.
-	// Wait for all racks to be up and ready.
-	for _, req := range requiredStatefulSets {
-		sts := statefulSets[req.Name]
-
-		rolledOut, err := controllerhelpers.IsStatefulSetRolledOut(sts)
-		if err != nil {
-			return progressingConditions, err
-		}
-
-		if !rolledOut {
-			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDBDatacenter", klog.KObj(sdc), "StatefulSet", klog.KObj(sts))
-			progressingConditions = append(progressingConditions, metav1.Condition{
-				Type:               statefulSetControllerProgressingCondition,
-				Status:             metav1.ConditionTrue,
-				Reason:             "WaitingForStatefulSetRollout",
-				Message:            fmt.Sprintf("Waiting for StatefulSet %q to roll out.", naming.ObjRef(req)),
-				ObservedGeneration: sdc.Generation,
-			})
-			return progressingConditions, nil
-		}
-	}
-
 	upgradeContextConfigMap, ok := configMaps[naming.UpgradeContextConfigMapName(sdc)]
 	// Run hooks if an upgrade is in progress.
 	if ok {
@@ -686,6 +644,30 @@ func (sdcc *Controller) syncStatefulSets(
 			Message:            "Running upgrade hooks",
 			ObservedGeneration: sdc.Generation,
 		})
+
+		// TODO: This blocks unstucking by an update.
+		//  	 Also blocks lowering resources when the cluster is running low.
+		// Wait for all racks to be up and ready.
+		for _, req := range requiredStatefulSets {
+			sts := statefulSets[req.Name]
+
+			rolledOut, err := controllerhelpers.IsStatefulSetRolledOut(sts)
+			if err != nil {
+				return progressingConditions, err
+			}
+
+			if !rolledOut {
+				klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDBDatacenter", klog.KObj(sdc), "StatefulSet", klog.KObj(sts))
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               statefulSetControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             "WaitingForStatefulSetRollout",
+					Message:            fmt.Sprintf("Waiting for StatefulSet %q to roll out.", naming.ObjRef(req)),
+					ObservedGeneration: sdc.Generation,
+				})
+				return progressingConditions, nil
+			}
+		}
 
 		// Isolate the live values in a block to prevent accidental use.
 		{
@@ -1051,24 +1033,6 @@ func (sdcc *Controller) syncStatefulSets(
 			}
 
 			status.Racks[idx] = *sdcc.calculateRackStatus(sdc, updatedSts)
-		}
-
-		// Wait for the StatefulSet to roll out.
-		rolledOut, err := controllerhelpers.IsStatefulSetRolledOut(updatedSts)
-		if err != nil {
-			return progressingConditions, err
-		}
-
-		if !rolledOut {
-			klog.V(4).InfoS("Waiting for StatefulSet rollout", "ScyllaDBDatacenter", klog.KObj(sdc), "StatefulSet", klog.KObj(updatedSts))
-			progressingConditions = append(progressingConditions, metav1.Condition{
-				Type:               statefulSetControllerProgressingCondition,
-				Status:             metav1.ConditionTrue,
-				Reason:             "WaitingForStatefulSetRollout",
-				Message:            fmt.Sprintf("Waiting for StatefulSet %q to roll out.", naming.ObjRef(required)),
-				ObservedGeneration: sdc.Generation,
-			})
-			return progressingConditions, nil
 		}
 	}
 
