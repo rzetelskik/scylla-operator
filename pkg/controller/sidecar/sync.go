@@ -2,6 +2,7 @@ package sidecar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
@@ -11,16 +12,19 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/scyllaclient"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 )
 
 const (
-	requeueWaitDuration = 5 * time.Second
-	localhost           = "localhost"
+	hostIDErrorRequeueWaitDuration = 200 * time.Millisecond
+	requeueWaitDuration            = 5 * time.Second
+	localhost                      = "localhost"
 )
+
+var NoTokensAssignedError = errors.New("no tokens assigned to node")
 
 func (c *Controller) decommissionNode(ctx context.Context, svc *corev1.Service) error {
 	scyllaClient, err := controllerhelpers.NewScyllaClientForLocalhost()
@@ -120,14 +124,45 @@ func (c *Controller) syncAnnotations(ctx context.Context, svc *corev1.Service) e
 	}
 	defer scyllaClient.Close()
 
-	hostID, err := c.getHostID(ctx, scyllaClient)
+	localHostID, err := c.getHostID(ctx, scyllaClient)
 	if err != nil {
+		// Requeue superfluously to avoid rate limiting on ScyllaDB bootstrap.
+		c.queue.AddAfter(c.key, hostIDErrorRequeueWaitDuration)
 		return fmt.Errorf("can't get HostID: %w", err)
 	}
+	
+	svcCopy := svc.DeepCopy()
+	svcCopy.Annotations[naming.HostIDAnnotation] = localHostID
 
+	var errs []error
+	currentTokenRingHash, err := c.getCurrentTokenRingHash(ctx, scyllaClient, svc, localHostID)
+	if err != nil {
+		if errors.Is(err, NoTokensAssignedError) {
+			klog.V(4).InfoS("Node doesn't have any tokens assigned, looks like it's still bootstrapping, requeueing")
+			c.queue.AddAfter(c.key, requeueWaitDuration)
+		} else {
+			errs = append(errs, fmt.Errorf("can't get current token ring hash: %w", err))
+		}
+	} else {
+		svcCopy.Annotations[naming.CurrentTokenRingHashAnnotation] = currentTokenRingHash
+	}
+
+	if !equality.Semantic.DeepEqual(svc, svcCopy) {
+		_, err = c.kubeClient.CoreV1().Services(svcCopy.Namespace).Update(ctx, svcCopy, metav1.UpdateOptions{})
+		if err != nil {
+			errs = append(errs, fmt.Errorf("can't update service %q: %w", naming.ObjRef(svc), err))
+		} else {
+			klog.V(2).InfoS("Successfully updated service annotations", "Service", klog.KObj(svc))
+		}
+	}
+
+	return utilerrors.NewAggregate(errs)
+}
+
+func (c *Controller) getCurrentTokenRingHash(ctx context.Context, scyllaClient *scyllaclient.Client, svc *corev1.Service, hostID string) (string, error) {
 	ipToHostIDMap, err := scyllaClient.GetIPToHostIDMap(ctx, localhost)
 	if err != nil {
-		return fmt.Errorf("can't get host id to ip mapping: %w", err)
+		return "", fmt.Errorf("can't get host id to ip mapping: %w", err)
 	}
 
 	var localIP string
@@ -139,40 +174,25 @@ func (c *Controller) syncAnnotations(ctx context.Context, svc *corev1.Service) e
 	}
 
 	if len(localIP) == 0 {
-		return fmt.Errorf("local host ID %q not found in IP to hostID mapping: %v", hostID, ipToHostIDMap)
+		return "", fmt.Errorf("local host ID %q not found in IP to hostID mapping: %v", hostID, ipToHostIDMap)
 	}
 
 	nodeTokens, err := scyllaClient.GetNodeTokens(ctx, localhost, localIP)
 	if err != nil {
-		return fmt.Errorf("can't get node tokens: %w", err)
+		return "", fmt.Errorf("can't get node tokens: %w", err)
 	}
-
-	svcCopy := svc.DeepCopy()
-	svcCopy.Annotations[naming.HostIDAnnotation] = hostID
 
 	var currentTokenRingHash string
 	if len(nodeTokens) == 0 {
-		klog.V(4).InfoS("Node doesn't have any tokens assigned, looks like it's still bootstrapping, requeueing")
-		c.queue.AddAfter(c.key, requeueWaitDuration)
-	} else {
-		currentTokenRingHash, err = c.getTokenRingHash(ctx, scyllaClient)
-		if err != nil {
-			return fmt.Errorf("can't get token hash: %w", err)
-		}
-
-		svcCopy.Annotations[naming.CurrentTokenRingHashAnnotation] = currentTokenRingHash
+		return "", NoTokensAssignedError
 	}
 
-	if !equality.Semantic.DeepEqual(svc, svcCopy) {
-		_, err = c.kubeClient.CoreV1().Services(svcCopy.Namespace).Update(ctx, svcCopy, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("can't update service %q: %w", naming.ObjRef(svc), err)
-		}
-
-		klog.V(2).InfoS("Successfully updated service annotations", "Service", klog.KObj(svc))
+	currentTokenRingHash, err = c.getTokenRingHash(ctx, scyllaClient)
+	if err != nil {
+		return "", fmt.Errorf("can't get token hash: %w", err)
 	}
 
-	return nil
+	return currentTokenRingHash, nil
 }
 
 func (c *Controller) sync(ctx context.Context) error {
@@ -183,7 +203,7 @@ func (c *Controller) sync(ctx context.Context) error {
 	}()
 
 	svc, err := c.singleServiceLister.Services(c.namespace).Get(c.serviceName)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		klog.V(2).InfoS("Service has been deleted", "Service", klog.KObj(svc))
 		return nil
 	}
