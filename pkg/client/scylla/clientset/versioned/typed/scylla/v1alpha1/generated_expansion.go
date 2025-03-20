@@ -12,6 +12,8 @@ type ScyllaDBClusterExpansion interface{}
 
 type ScyllaDBDatacenterExpansion interface{}
 
+type ScyllaDBManagerTaskExpansion interface{}
+
 type ScyllaDBMonitoringExpansion interface{}
 
 type ScyllaOperatorConfigExpansion interface{}
