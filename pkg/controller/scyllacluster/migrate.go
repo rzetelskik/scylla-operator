@@ -9,6 +9,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/go-openapi/validate"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
@@ -19,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/errors"
+	apimachineryvalidationutils "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
 )
 
@@ -463,4 +465,86 @@ func migrateV1Alpha1ScyllaDBDatacenterStatusToV1ScyllaClusterStatus(sdc *scyllav
 		Backups:   nil,
 		ManagerID: nil,
 	}
+}
+
+func MigrateV1ScyllaClusterBackupsAndRepairsToV1Alpha1ScyllaDBDManagerTasks(sc *scyllav1.ScyllaCluster) ([]*scyllav1alpha1.ScyllaDBManagerTask, error) {
+	var errs []error
+	var scyllaDBManagerTasks []*scyllav1alpha1.ScyllaDBManagerTask
+
+	for _, backupTaskSpec := range sc.Spec.Backups {
+
+	}
+
+	return nil, nil
+}
+
+func migrateV1ScyllaClusterBackupTaskSpecToV1Alpha1ScyllaDBManagerTask(backupTaskSpec *scyllav1.BackupTaskSpec) (*scyllav1alpha1.ScyllaDBManagerTask, error) {
+	return nil, nil
+}
+
+func migrateV1ScyllaClusterRepairTaskSpecToV1Alpha1ScyllaDBManagerTask(repairTaskSpec *scyllav1.RepairTaskSpec) (*scyllav1alpha1.ScyllaDBManagerTask, error) {
+	nameSuffix, err := naming.GenerateNameHash(string(scyllav1alpha1.ScyllaDBManagerTaskTypeRepair), backupSpec.Name)
+	if err != nil {
+		return nil, fmt.Errorf("can't generate ScyllaDBManagerTask name suffix: %w", err)
+	}
+
+	smt := &scyllav1alpha1.ScyllaDBManagerTask{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        fmt.Sprintf("%s-%s", sc.Name, nameSuffix),
+			Namespace:   sc.Namespace,
+			Annotations: map[string]string{},
+			Labels:      map[string]string{},
+		},
+		Spec: scyllav1alpha1.ScyllaDBManagerTaskSpec{
+			ScyllaDBCluster: scyllav1alpha1.LocalScyllaDBReference{
+				Name: sc.Name,
+				Kind: "ScyllaDBDatacenter",
+			},
+			Type: scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
+			Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
+				ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{},
+				DC:                          slices.Clone(repairSpec.DC),
+				Keyspace:                    slices.Clone(repairSpec.Keyspace),
+				FailFast:                    pointer.Ptr(repairSpec.FailFast),
+				Parallel:                    pointer.Ptr(repairSpec.Parallel),
+			},
+		},
+		// Status is reconciled by the controllers.
+		Status: scyllav1alpha1.ScyllaDBManagerTaskStatus{},
+	}
+
+	if repairSpec.Host != nil {
+		smt.Spec.Repair.Host = pointer.Ptr(*repairSpec.Host)
+	}
+
+	if len(repairSpec.Intensity) != 0 {
+		smt.Annotations[naming.TransformScyllaClusterToScyllaDBManagerTaskRepairIntensityAnnotation] = repairSpec.Intensity
+	}
+
+	if len(repairSpec.SmallTableThreshold) != 0 {
+		smt.Annotations[naming.TransformScyllaClusterToScyllaDBManagerTaskRepairSmallTableThresholdAnnotation] = repairSpec.SmallTableThreshold
+	}
+
+	if repairSpec.StartDate != nil {
+		smt.Annotations[naming.TransformScyllaClusterToScyllaDBManagerTaskScheduleStartDateAnnotation] = *repairSpec.StartDate
+	}
+
+	if repairSpec.Interval != nil {
+		smt.Annotations[naming.TransformScyllaClusterToScyllaDBManagerTaskScheduleIntervalAnnotation] = *repairSpec.Interval
+	}
+
+	if repairSpec.Timezone != nil {
+		smt.Annotations[naming.TransformScyllaClusterToScyllaDBManagerTaskScheduleTimezoneAnnotation] = *repairSpec.Timezone
+	}
+
+	return nil, nil
+}
+
+func generateScyllaDBManagerTaskName(scName, taskType, taskName string) (string, error) {
+	nameHash, err := naming.GenerateNameHash(scName, taskType, taskName)
+	if err != nil {
+		return "", fmt.Errorf("can't generate ScyllaDBManagerTask name hash: %w", err)
+	}
+
+	return fmt.Sprintf("%s-%s-%s", scName, taskType)[:apimachineryvalidationutils.DNS1123SubdomainMaxLength-len(nameHash)] + nameHash, nil
 }

@@ -38,3 +38,6 @@ spec:
               key: scylla-operator.scylladb.com/dedicated
               operator: Equal
               value: scyllaclusters
+  repairs:
+  - name: repair1
+    parallel: -30

@@ -62,17 +62,18 @@ type Controller struct {
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllaclient.Interface
 
-	serviceLister            corev1listers.ServiceLister
-	secretLister             corev1listers.SecretLister
-	configMapLister          corev1listers.ConfigMapLister
-	serviceAccountLister     corev1listers.ServiceAccountLister
-	roleBindingLister        rbacv1listers.RoleBindingLister
-	statefulSetLister        appsv1listers.StatefulSetLister
-	pdbLister                policyv1listers.PodDisruptionBudgetLister
-	ingressLister            networkingv1listers.IngressLister
-	jobLister                batchv1listers.JobLister
-	scyllaClusterLister      scyllav1listers.ScyllaClusterLister
-	scyllaDBDatacenterLister scyllav1alpha1listers.ScyllaDBDatacenterLister
+	serviceLister             corev1listers.ServiceLister
+	secretLister              corev1listers.SecretLister
+	configMapLister           corev1listers.ConfigMapLister
+	serviceAccountLister      corev1listers.ServiceAccountLister
+	roleBindingLister         rbacv1listers.RoleBindingLister
+	statefulSetLister         appsv1listers.StatefulSetLister
+	pdbLister                 policyv1listers.PodDisruptionBudgetLister
+	ingressLister             networkingv1listers.IngressLister
+	jobLister                 batchv1listers.JobLister
+	scyllaClusterLister       scyllav1listers.ScyllaClusterLister
+	scyllaDBDatacenterLister  scyllav1alpha1listers.ScyllaDBDatacenterLister
+	scyllaDBManagerTaskLister scyllav1alpha1listers.ScyllaDBManagerTaskLister
 
 	cachesToSync []cache.InformerSynced
 
@@ -96,6 +97,7 @@ func NewController(
 	jobInformer batchv1informers.JobInformer,
 	scyllaClusterInformer scyllav1informers.ScyllaClusterInformer,
 	scyllaDBDatacenterInformer scyllav1alpha1informers.ScyllaDBDatacenterInformer,
+	scyllaDBManagerTaskInformer scyllav1alpha1informers.ScyllaDBManagerTaskInformer,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
@@ -105,17 +107,18 @@ func NewController(
 		kubeClient:   kubeClient,
 		scyllaClient: scyllaClient,
 
-		serviceLister:            serviceInformer.Lister(),
-		secretLister:             secretInformer.Lister(),
-		configMapLister:          configMapInformer.Lister(),
-		serviceAccountLister:     serviceAccountInformer.Lister(),
-		roleBindingLister:        roleBindingInformer.Lister(),
-		statefulSetLister:        statefulSetInformer.Lister(),
-		pdbLister:                pdbInformer.Lister(),
-		ingressLister:            ingressInformer.Lister(),
-		scyllaClusterLister:      scyllaClusterInformer.Lister(),
-		scyllaDBDatacenterLister: scyllaDBDatacenterInformer.Lister(),
-		jobLister:                jobInformer.Lister(),
+		serviceLister:             serviceInformer.Lister(),
+		secretLister:              secretInformer.Lister(),
+		configMapLister:           configMapInformer.Lister(),
+		serviceAccountLister:      serviceAccountInformer.Lister(),
+		roleBindingLister:         roleBindingInformer.Lister(),
+		statefulSetLister:         statefulSetInformer.Lister(),
+		pdbLister:                 pdbInformer.Lister(),
+		ingressLister:             ingressInformer.Lister(),
+		scyllaClusterLister:       scyllaClusterInformer.Lister(),
+		scyllaDBDatacenterLister:  scyllaDBDatacenterInformer.Lister(),
+		jobLister:                 jobInformer.Lister(),
+		scyllaDBManagerTaskLister: scyllaDBManagerTaskInformer.Lister(),
 
 		cachesToSync: []cache.InformerSynced{
 			serviceInformer.Informer().HasSynced,
@@ -129,6 +132,7 @@ func NewController(
 			jobInformer.Informer().HasSynced,
 			scyllaClusterInformer.Informer().HasSynced,
 			scyllaDBDatacenterInformer.Informer().HasSynced,
+			scyllaDBManagerTaskInformer.Informer().HasSynced,
 		},
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scyllaclustermigration-controller"}),

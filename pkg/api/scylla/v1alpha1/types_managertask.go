@@ -35,12 +35,12 @@ type ScyllaDBManagerBackupTaskOptions struct {
 	// schedule specifies the schedule on which the backup task is run.
 	ScyllaDBManagerTaskSchedule `json:",inline"`
 
-	// dc specifies a list of datacenter `glob` patterns separated by commas, e.g. `dc1,!otherdc*`, determining the datacenters to include or exclude from backup.
+	// dc specifies `glob` patterns determining the datacenters to include or exclude from backup, e.g. `dc1`, `!otherdc*`.
 	// +optional
 	DC []string `json:"dc,omitempty"`
 
-	// keyspace specifies a list of `glob` patterns separated by commas used to include or exclude tables from backup.
-	// The patterns match keyspaces and tables. Keyspace names are separated from table names with a dot e.g. `keyspace,!keyspace.table_prefix_*`.
+	// keyspace specifies `glob` patterns used to include or exclude tables from backup.
+	// The patterns match keyspaces and tables. Keyspace names are separated from table names with a dot e.g. `!keyspace.table_prefix_*`.
 	// +optional
 	Keyspace []string `json:"keyspace,omitempty"`
 
@@ -50,8 +50,8 @@ type ScyllaDBManagerBackupTaskOptions struct {
 	// `<name>` specifies a bucket name and must be an alphanumeric string which may contain a dash and or a dot, but other characters are forbidden.
 	Location []string `json:"location"`
 
-	// rateLimit specifies the limit for the upload rate, expressed in  megabytes (MiB) per second, at which the snapshot files can be uploaded from a ScyllaDB node to its backup destination, in the following format: `[<dc>:]<limit>`.
-	// `<dc>:` is optional and allow for specifying different upload limits in selected datacenters.
+	// rateLimit specifies the limit for the upload rate, expressed in  megabytes (Mi) per second, at which the snapshot files can be uploaded from a ScyllaDB node to its backup destination, in the following format: `[<dc>:]<limit>`.
+	// `<dc>:` is optional and allows for specifying different upload limits in selected datacenters.
 	// +optional
 	RateLimit []string `json:"rateLimit,omitempty"`
 
@@ -76,12 +76,12 @@ type ScyllaDBManagerRepairTaskOptions struct {
 	// schedule specifies the schedule on which the repair task is run.
 	ScyllaDBManagerTaskSchedule `json:",inline"`
 
-	// dc specifies a list of datacenter `glob` patterns separated by commas, e.g. `dc1,!otherdc*`, determining the datacenters to include or exclude from repair.
+	// dc specifies `glob` patterns determining the datacenters to include or exclude from repair, e.g. `dc1`, `!otherdc*`.
 	// +optional
 	DC []string `json:"dc,omitempty"`
 
-	// keyspace specifies a list of `glob` patterns separated by commas used to include or exclude tables from repair.
-	// The patterns match keyspaces and tables. Keyspace names are separated from table names with a dot e.g. `keyspace,!keyspace.table_prefix_*`.
+	// keyspace specifies `glob` patterns used to include or exclude tables from repair.
+	// The patterns match keyspaces and tables. Keyspace names are separated from table names with a dot e.g. `!keyspace.table_prefix_*`.
 	// +optional
 	Keyspace []string `json:"keyspace,omitempty"`
 
@@ -161,8 +161,6 @@ type ScyllaDBManagerTaskStatus struct {
 // +kubebuilder:storageversion
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:printcolumn:name="AVAILABLE",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
-// +kubebuilder:printcolumn:name="PROGRESSING",type=string,JSONPath=".status.conditions[?(@.type=='Progressing')].status"
 // +kubebuilder:printcolumn:name="DEGRADED",type=string,JSONPath=".status.conditions[?(@.type=='Degraded')].status"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 

@@ -57,6 +57,15 @@ const (
 	TransformScyllaClusterToScyllaDBDatacenterSysctlsAnnotation                      = "internal.scylla-operator.scylladb.com/sysctls"
 )
 
+// Annotations used for feature backward compatibility between v1.ScyllaCluster and v1alpha1.ScyllaDBManagerTask
+const (
+	TransformScyllaClusterToScyllaDBManagerTaskScheduleIntervalAnnotation          = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-interval-override"
+	TransformScyllaClusterToScyllaDBManagerTaskScheduleStartDateAnnotation         = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-start-date-override"
+	TransformScyllaClusterToScyllaDBManagerTaskScheduleTimezoneAnnotation          = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-timezone-override"
+	TransformScyllaClusterToScyllaDBManagerTaskRepairIntensityAnnotation           = "internal.scylla-operator.scylladb.com/scylladb-manager-task-repair-intensity-override"
+	TransformScyllaClusterToScyllaDBManagerTaskRepairSmallTableThresholdAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-task-repair-small-table-threshold-override"
+)
+
 type ScyllaServiceType string
 
 const (
