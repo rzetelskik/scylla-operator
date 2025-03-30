@@ -294,6 +294,9 @@ func MigrateV1ScyllaClusterToV1Alpha1ScyllaDBDatacenter(sc *scyllav1.ScyllaClust
 			maps.Copy(objectMeta.Labels, sc.Labels)
 			maps.Copy(objectMeta.Annotations, sc.Annotations)
 
+			// Mark all v1.ScyllaClusters for registration with ScyllaDB Manager for backwards compatibility.
+			objectMeta.Labels[naming.GlobalScyllaDBManagerRegistrationLabel] = naming.LabelValueTrue
+
 			if sc.Spec.Network.HostNetworking {
 				objectMeta.Annotations[naming.TransformScyllaClusterToScyllaDBDatacenterHostNetworkingAnnotation] = "true"
 			}

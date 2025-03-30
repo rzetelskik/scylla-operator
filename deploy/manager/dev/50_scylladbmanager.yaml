@@ -1,0 +1,13 @@
+apiVersion: scylla.scylladb.com/v1alpha1
+kind: ScyllaDBManager
+metadata:
+  name: scylla-manager
+  namespace: scylla-manager
+  annotations:
+    scylla-operator.scylladb.com/global-scylladb-manager: "true"
+spec:
+  selectors:
+  - kind: ScyllaDBDatacenter
+    labelSelector:
+      matchLabels:
+        scylla-operator.scylladb.com/register-with-global-scylladb-manager: "true"

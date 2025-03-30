@@ -547,6 +547,7 @@ func newBasicScyllaDBDatacenter() *scyllav1alpha1.ScyllaDBDatacenter {
 			Metadata: &scyllav1alpha1.ObjectTemplateMetadata{
 				Labels: map[string]string{
 					"label": "value",
+					"scylla-operator.scylladb.com/register-with-scylladb-manager": "true",
 				},
 				Annotations: map[string]string{
 					"annotation": "value",

@@ -238,3 +238,12 @@ const (
 	RemoteKubernetesClusterFinalizer = "scylla-operator.scylladb.com/remotekubernetescluster-protection"
 	ScyllaDBClusterFinalizer         = "scylla-operator.scylladb.com/scylladbcluster-protection"
 )
+
+const (
+	GlobalScyllaDBManagerLabel             = "scylla-operator.scylladb.com/global-scylladb-manager"
+	GlobalScyllaDBManagerRegistrationLabel = "scylla-operator.scylladb.com/register-with-global-scylladb-manager"
+
+	ScyllaDBManagerNameLabel = "scylla-operator.scylladb.com/scylladb-manager-name"
+
+	ScyllaDBManagerClusterRegistrationOverrideScyllaDBClusterNamespaceAnnotation = "internal.scylla-operator.scylladb.com/scylladbcluster-ref-namespace-override"
+)
