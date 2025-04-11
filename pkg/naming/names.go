@@ -2,9 +2,10 @@ package naming
 
 import (
 	"fmt"
-	"github.com/scylladb/scylla-operator/pkg/util/hash"
 	"strconv"
 	"strings"
+
+	"github.com/scylladb/scylla-operator/pkg/util/hash"
 
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/pkg/errors"
@@ -84,6 +85,10 @@ func PodDisruptionBudgetName(sdc *scyllav1alpha1.ScyllaDBDatacenter) string {
 
 func PodDisruptionBudgetNameForScyllaCluster(sc *scyllav1.ScyllaCluster) string {
 	return sc.Name
+}
+
+func CrossNamespaceServiceName(sdc *scyllav1alpha1.ScyllaDBDatacenter) string {
+	return fmt.Sprintf("%s.%s.svc", IdentityServiceName(sdc), sdc.Namespace)
 }
 
 func CrossNamespaceServiceNameForCluster(sc *scyllav1.ScyllaCluster) string {

@@ -153,8 +153,9 @@ const (
 )
 
 const (
-	ScyllaManagerNamespace   = "scylla-manager"
-	ScyllaManagerServiceName = "scylla-manager"
+	ScyllaManagerNamespace      = "scylla-manager"
+	ScyllaManagerServiceName    = "scylla-manager"
+	ScyllaManagerDeploymentName = "scylla-manager"
 
 	ScyllaOperatorNodeTuningNamespace = "scylla-operator-node-tuning"
 
@@ -237,4 +238,16 @@ const (
 const (
 	RemoteKubernetesClusterFinalizer = "scylla-operator.scylladb.com/remotekubernetescluster-protection"
 	ScyllaDBClusterFinalizer         = "scylla-operator.scylladb.com/scylladbcluster-protection"
+)
+
+const (
+	ScyllaDBDatacenterKind = "ScyllaDBDatacenter"
+)
+
+const (
+	GlobalScyllaDBManagerRegistrationLabel = "scylla-operator.scylladb.com/register-with-global-scylladb-manager"
+	GlobalScyllaDBManagerLabel             = "internal.scylla-operator.scylladb.com/global-scylladb-manager"
+
+	ScyllaDBManagerClusterRegistrationFinalizer              = "scylla-operator.scylladb.com/scylladbmanagerclusterregistration-deletion"
+	ScyllaDBManagerClusterRegistrationNameOverrideAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-cluster-name-override"
 )

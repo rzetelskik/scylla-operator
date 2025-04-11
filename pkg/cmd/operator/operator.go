@@ -12,6 +12,7 @@ import (
 	scyllaversionedclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/clusterdomain"
+	"github.com/scylladb/scylla-operator/pkg/controller/globalscylladbmanager"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
@@ -19,6 +20,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllacluster"
 	"github.com/scylladb/scylla-operator/pkg/controller/scylladbcluster"
 	"github.com/scylladb/scylla-operator/pkg/controller/scylladbdatacenter"
+	"github.com/scylladb/scylla-operator/pkg/controller/scylladbmanagerclusterregistration"
 	"github.com/scylladb/scylla-operator/pkg/controller/scylladbmonitoring"
 	"github.com/scylladb/scylla-operator/pkg/controller/scyllaoperatorconfig"
 	"github.com/scylladb/scylla-operator/pkg/crypto"
@@ -333,6 +335,12 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 
 	monitoringInformers := monitoringinformers.NewSharedInformerFactory(o.monitoringClient, resyncPeriod)
 
+	globalScyllaDBManagerDeploymentInformers := informers.NewSharedInformerFactoryWithOptions(o.kubeClient, resyncPeriod, informers.WithNamespace(naming.ScyllaManagerNamespace), informers.WithTweakListOptions(
+		func(options *metav1.ListOptions) {
+			options.FieldSelector = fields.OneTermEqualSelector("metadata.name", naming.ScyllaManagerDeploymentName).String()
+		},
+	))
+
 	sdcc, err := scylladbdatacenter.NewController(
 		o.kubeClient,
 		o.scyllaClient.ScyllaV1alpha1(),
@@ -621,6 +629,28 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		return fmt.Errorf("can't create ScyllaDBCluster controller: %w", err)
 	}
 
+	gsmc, err := globalscylladbmanager.NewController(
+		o.kubeClient,
+		o.scyllaClient.ScyllaV1alpha1(),
+		globalScyllaDBManagerDeploymentInformers.Apps().V1().Deployments(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDBManagerClusterRegistrations(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
+	)
+	if err != nil {
+		return fmt.Errorf("can't create global ScyllaDB Manager controller: %w", err)
+	}
+
+	smcrc, err := scylladbmanagerclusterregistration.NewController(
+		o.kubeClient,
+		o.scyllaClient.ScyllaV1alpha1(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDBManagerClusterRegistrations(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
+		kubeInformers.Core().V1().Secrets(),
+	)
+	if err != nil {
+		return fmt.Errorf("can't create ScyllaDBManagerClusterRegistration controller: %w", err)
+	}
+
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -675,6 +705,12 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		globalScyllaDBManagerDeploymentInformers.Start(ctx.Done())
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		sdcc.Run(ctx, o.ConcurrentSyncs)
 	}()
 
@@ -724,6 +760,18 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	go func() {
 		defer wg.Done()
 		sdbcc.Run(ctx, o.ConcurrentSyncs)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		gsmc.Run(ctx)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		smcrc.Run(ctx, o.ConcurrentSyncs)
 	}()
 
 	<-ctx.Done()
