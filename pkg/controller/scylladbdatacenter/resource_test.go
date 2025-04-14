@@ -556,6 +556,62 @@ func TestMemberService(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "non-propagated annotations are not propagated",
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := basicSC.DeepCopy()
+				for _, k := range nonPropagatedAnnotationKeys {
+					metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			rackName:   basicRackName,
+			svcName:    basicSVCName,
+			oldService: nil,
+			jobs:       nil,
+			expectedService: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            basicSVCName,
+					Labels:          basicSVCLabels(),
+					Annotations:     basicSVCAnnotations(),
+					OwnerReferences: basicSCOwnerRefs,
+				},
+				Spec: corev1.ServiceSpec{
+					Type:                     corev1.ServiceTypeClusterIP,
+					Selector:                 basicSVCSelector,
+					PublishNotReadyAddresses: true,
+					Ports:                    basicPorts,
+				},
+			},
+		},
+		{
+			name: "non-propagated labels are not propagated",
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := basicSC.DeepCopy()
+				for _, k := range nonPropagatedLabelKeys {
+					metav1.SetMetaDataLabel(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			rackName:   basicRackName,
+			svcName:    basicSVCName,
+			oldService: nil,
+			jobs:       nil,
+			expectedService: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            basicSVCName,
+					Labels:          basicSVCLabels(),
+					Annotations:     basicSVCAnnotations(),
+					OwnerReferences: basicSCOwnerRefs,
+				},
+				Spec: corev1.ServiceSpec{
+					Type:                     corev1.ServiceTypeClusterIP,
+					Selector:                 basicSVCSelector,
+					PublishNotReadyAddresses: true,
+					Ports:                    basicPorts,
+				},
+			},
+		},
 	}
 
 	for _, tc := range tt {
@@ -1688,6 +1744,34 @@ exec scylla-manager-agent \
 			}(),
 			expectedError: nil,
 		},
+		{
+			name: "non-propagated annotations are not propagated",
+			rack: newBasicRack(),
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				for _, k := range nonPropagatedAnnotationKeys {
+					metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			existingStatefulSet: nil,
+			expectedStatefulSet: newBasicStatefulSet(),
+			expectedError:       nil,
+		},
+		{
+			name: "non-propagated labels are not propagated",
+			rack: newBasicRack(),
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				for _, k := range nonPropagatedLabelKeys {
+					metav1.SetMetaDataLabel(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			existingStatefulSet: nil,
+			expectedStatefulSet: newBasicStatefulSet(),
+			expectedError:       nil,
+		},
 	}
 
 	for _, tc := range tt {
@@ -2148,6 +2232,172 @@ func TestMakeIngresses(t *testing.T) {
 					},
 				}
 
+				return sdc
+			}(),
+			expectedIngresses: []*networkingv1.Ingress{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "any-cql",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/name":       "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"default-sc-label":             "foo",
+							"scylla/cluster":               "basic",
+							"scylla-operator.scylladb.com/scylla-ingress-type": "AnyNode",
+						},
+						Annotations: map[string]string{
+							"default-sc-annotation": "bar",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "basic",
+								UID:                "the-uid",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Spec: networkingv1.IngressSpec{
+						IngressClassName: pointer.Ptr("cql-ingress-class"),
+						Rules:            []networkingv1.IngressRule{},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1-cql",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/name":       "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"default-sc-label":             "foo",
+							"scylla/cluster":               "basic",
+							"scylla-operator.scylladb.com/scylla-ingress-type": "Node",
+						},
+						Annotations: map[string]string{
+							"default-sc-annotation": "bar",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "basic",
+								UID:                "the-uid",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Spec: networkingv1.IngressSpec{
+						IngressClassName: pointer.Ptr("cql-ingress-class"),
+						Rules:            []networkingv1.IngressRule{},
+					},
+				},
+			},
+		},
+		{
+			name: "non-propagated annotations are not propagated",
+			services: map[string]*corev1.Service{
+				"any":    newIdentityService("any"),
+				"node-1": newMemberService("node-1", "host-id-1"),
+			},
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := basicScyllaCluster.DeepCopy()
+				sdc.Spec.ExposeOptions = &scyllav1alpha1.ExposeOptions{
+					CQL: &scyllav1alpha1.CQLExposeOptions{
+						Ingress: &scyllav1alpha1.CQLExposeIngressOptions{
+							IngressClassName: "cql-ingress-class",
+						},
+					},
+				}
+				for _, k := range nonPropagatedAnnotationKeys {
+					metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			expectedIngresses: []*networkingv1.Ingress{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "any-cql",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/name":       "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"default-sc-label":             "foo",
+							"scylla/cluster":               "basic",
+							"scylla-operator.scylladb.com/scylla-ingress-type": "AnyNode",
+						},
+						Annotations: map[string]string{
+							"default-sc-annotation": "bar",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "basic",
+								UID:                "the-uid",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Spec: networkingv1.IngressSpec{
+						IngressClassName: pointer.Ptr("cql-ingress-class"),
+						Rules:            []networkingv1.IngressRule{},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-1-cql",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/name":       "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"default-sc-label":             "foo",
+							"scylla/cluster":               "basic",
+							"scylla-operator.scylladb.com/scylla-ingress-type": "Node",
+						},
+						Annotations: map[string]string{
+							"default-sc-annotation": "bar",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "basic",
+								UID:                "the-uid",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Spec: networkingv1.IngressSpec{
+						IngressClassName: pointer.Ptr("cql-ingress-class"),
+						Rules:            []networkingv1.IngressRule{},
+					},
+				},
+			},
+		},
+		{
+			name: "non-propagated labels are not propagated",
+			services: map[string]*corev1.Service{
+				"any":    newIdentityService("any"),
+				"node-1": newMemberService("node-1", "host-id-1"),
+			},
+			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := basicScyllaCluster.DeepCopy()
+				sdc.Spec.ExposeOptions = &scyllav1alpha1.ExposeOptions{
+					CQL: &scyllav1alpha1.CQLExposeOptions{
+						Ingress: &scyllav1alpha1.CQLExposeIngressOptions{
+							IngressClassName: "cql-ingress-class",
+						},
+					},
+				}
+				for _, k := range nonPropagatedLabelKeys {
+					metav1.SetMetaDataLabel(&sdc.ObjectMeta, k, "")
+				}
 				return sdc
 			}(),
 			expectedIngresses: []*networkingv1.Ingress{
@@ -2859,6 +3109,98 @@ func TestMakeJobs(t *testing.T) {
 			},
 			expectedConditions: nil,
 		},
+		{
+			name:               "non-propagated labels are not propagated",
+			scyllaDBDatacenter: basicScyllaDBDatacenter,
+			services: func() map[string]*corev1.Service {
+				return map[string]*corev1.Service{
+					"basic-dc-rack-0": newMemberService("basic-dc-rack-0", map[string]string{
+						"internal.scylla-operator.scylladb.com/current-token-ring-hash":         "abc",
+						"internal.scylla-operator.scylladb.com/last-cleaned-up-token-ring-hash": "def",
+					}),
+				}
+			}(),
+			expectedJobs: []*batchv1.Job{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cleanup-basic-dc-rack-0",
+						Namespace: "default",
+						Annotations: map[string]string{
+							"default-sc-annotation": "bar",
+							"internal.scylla-operator.scylladb.com/cleanup-token-ring-hash": "abc",
+						},
+						Labels: map[string]string{
+							"default-sc-label":                           "foo",
+							"scylla/cluster":                             "basic",
+							"scylla-operator.scylladb.com/node-job":      "basic-dc-rack-0",
+							"scylla-operator.scylladb.com/node-job-type": "Cleanup",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "basic",
+								UID:                "the-uid",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Spec: batchv1.JobSpec{
+						Selector:       nil,
+						ManualSelector: pointer.Ptr(false),
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Annotations: map[string]string{
+									"default-sc-annotation": "bar",
+									"internal.scylla-operator.scylladb.com/cleanup-token-ring-hash": "abc",
+								},
+								Labels: map[string]string{
+									"default-sc-label":                           "foo",
+									"scylla/cluster":                             "basic",
+									"scylla-operator.scylladb.com/node-job":      "basic-dc-rack-0",
+									"scylla-operator.scylladb.com/node-job-type": "Cleanup",
+								},
+							},
+							Spec: corev1.PodSpec{
+								RestartPolicy: corev1.RestartPolicyOnFailure,
+								Containers: []corev1.Container{
+									{
+										Name:            naming.CleanupContainerName,
+										Image:           "scylladb/scylla-operator:latest",
+										ImagePullPolicy: corev1.PullIfNotPresent,
+										Args: []string{
+											"cleanup-job",
+											"--manager-auth-config-path=/etc/scylla-cleanup-job/auth-token.yaml",
+											"--node-address=basic-dc-rack-0.default.svc",
+										},
+										VolumeMounts: []corev1.VolumeMount{
+											{
+												Name:      "scylla-manager-agent-token",
+												ReadOnly:  true,
+												MountPath: "/etc/scylla-cleanup-job/auth-token.yaml",
+												SubPath:   "auth-token.yaml",
+											},
+										},
+									},
+								},
+								Volumes: []corev1.Volume{
+									{
+										Name: "scylla-manager-agent-token",
+										VolumeSource: corev1.VolumeSource{
+											Secret: &corev1.SecretVolumeSource{
+												SecretName: "basic-auth-token",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedConditions: nil,
+		},
 	}
 
 	for _, tc := range tt {
@@ -2880,6 +3222,23 @@ func TestMakeJobs(t *testing.T) {
 }
 
 func Test_MakeManagedScyllaDBConfig(t *testing.T) {
+	newBasicScyllaDBDatacenter := func() *scyllav1alpha1.ScyllaDBDatacenter {
+		return &scyllav1alpha1.ScyllaDBDatacenter{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:   "foo-ns",
+				Name:        "foo",
+				UID:         "uid-42",
+				Annotations: map[string]string{},
+				Labels: map[string]string{
+					"user-label": "user-label-value",
+				},
+			},
+			Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
+				ClusterName: "foo-cluster",
+			},
+		}
+	}
+
 	tt := []struct {
 		name                 string
 		sdc                  *scyllav1alpha1.ScyllaDBDatacenter
@@ -2888,20 +3247,8 @@ func Test_MakeManagedScyllaDBConfig(t *testing.T) {
 		expectedErr          error
 	}{
 		{
-			name: "no TLS config when the feature is disabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-				},
-			},
+			name:                 "no TLS config when the feature is disabled",
+			sdc:                  newBasicScyllaDBDatacenter(),
 			enableTLSFeatureGate: false,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -2909,8 +3256,9 @@ func Test_MakeManagedScyllaDBConfig(t *testing.T) {
 					APIVersion: "v1",
 				},
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo-managed-config",
+					Namespace:   "foo-ns",
+					Name:        "foo-managed-config",
+					Annotations: map[string]string{},
 					Labels: map[string]string{
 						"app":                          "scylla",
 						"app.kubernetes.io/managed-by": "scylla-operator",
@@ -2941,20 +3289,8 @@ internode_compression: "all"
 			expectedErr: nil,
 		},
 		{
-			name: "TLS config present when the feature is enabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-				},
-			},
+			name:                 "TLS config present when the feature is enabled",
+			sdc:                  newBasicScyllaDBDatacenter(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -2962,8 +3298,9 @@ internode_compression: "all"
 					APIVersion: "v1",
 				},
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo-managed-config",
+					Namespace:   "foo-ns",
+					Name:        "foo-managed-config",
+					Annotations: map[string]string{},
 					Labels: map[string]string{
 						"app":                          "scylla",
 						"app.kubernetes.io/managed-by": "scylla-operator",
@@ -3004,22 +3341,11 @@ client_encryption_options:
 		},
 		{
 			name: "alternator is setup on TLS-only with authorization by default",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3075,25 +3401,12 @@ alternator_encryption_options:
 		},
 		{
 			name: "alternator is setup on TLS-only when insecure port is disabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-insecure-enable-http": "false",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-insecure-enable-http", "false")
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3152,25 +3465,12 @@ alternator_encryption_options:
 		},
 		{
 			name: "alternator is setup both on TLS and insecure when insecure port is enabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-insecure-enable-http": "true",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-insecure-enable-http", "true")
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3230,25 +3530,12 @@ alternator_encryption_options:
 		},
 		{
 			name: "alternator is setup without authorization when manual port is specified for backwards compatibility",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-port": "42",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-port", "42")
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3308,26 +3595,13 @@ alternator_encryption_options:
 		},
 		{
 			name: "alternator is setup with authorization when manual port is specified and authorization is enabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-port":                           "42",
-						"internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization": "false",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-port", "42")
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization", "false")
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3388,26 +3662,13 @@ alternator_encryption_options:
 		},
 		{
 			name: "alternator is setup without authorization when it's disabled and using manual port",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-port":                           "42",
-						"internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization": "true",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-port", "42")
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization", "true")
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3456,86 +3717,6 @@ client_encryption_options:
   truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
 alternator_write_isolation: always_use_lwt
 alternator_enforce_authorization: false
-alternator_port: 42
-alternator_https_port: 8043
-alternator_encryption_options:
-  certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/alternator-serving-certs/tls.crt"
-  keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/alternator-serving-certs/tls.key"
-`, "\n"),
-				},
-			},
-			expectedErr: nil,
-		},
-		{
-			name: "alternator is setup with authorization when manual port is specified and authorization is enabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-port":                           "42",
-						"internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization": "false",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
-			enableTLSFeatureGate: true,
-			expectedCM: &corev1.ConfigMap{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "ConfigMap",
-					APIVersion: "v1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo-managed-config",
-					Labels: map[string]string{
-						"app":                          "scylla",
-						"app.kubernetes.io/managed-by": "scylla-operator",
-						"app.kubernetes.io/name":       "scylla",
-						"scylla/cluster":               "foo",
-						"user-label":                   "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-port":                           "42",
-						"internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization": "false",
-					},
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion:         "scylla.scylladb.com/v1alpha1",
-							Kind:               "ScyllaDBDatacenter",
-							Name:               "foo",
-							UID:                "uid-42",
-							Controller:         pointer.Ptr(true),
-							BlockOwnerDeletion: pointer.Ptr(true),
-						},
-					},
-				},
-				Data: map[string]string{
-					"scylladb-managed-config.yaml": strings.TrimPrefix(`
-cluster_name: "foo-cluster"
-rpc_address: "0.0.0.0"
-endpoint_snitch: "GossipingPropertyFileSnitch"
-internode_compression: "all"
-native_transport_port_ssl: 9142
-native_shard_aware_transport_port_ssl: 19142
-client_encryption_options:
-  enabled: true
-  optional: false
-  certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
-  keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
-  require_client_auth: true
-  truststore: "/var/run/configmaps/scylla-operator.scylladb.com/scylladb/client-ca/ca-bundle.crt"
-alternator_write_isolation: always_use_lwt
-alternator_enforce_authorization: true
 alternator_port: 42
 alternator_https_port: 8043
 alternator_encryption_options:
@@ -3548,25 +3729,12 @@ alternator_encryption_options:
 		},
 		{
 			name: "alternator is setup without authorization when it's disabled",
-			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "foo-ns",
-					Name:      "foo",
-					UID:       "uid-42",
-					Labels: map[string]string{
-						"user-label": "user-label-value",
-					},
-					Annotations: map[string]string{
-						"internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization": "true",
-					},
-				},
-				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
-					ClusterName: "foo-cluster",
-					ScyllaDB: scyllav1alpha1.ScyllaDB{
-						AlternatorOptions: &scyllav1alpha1.AlternatorOptions{},
-					},
-				},
-			},
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, "internal.scylla-operator.scylladb.com/alternator-insecure-disable-authorization", "true")
+				sdc.Spec.ScyllaDB.AlternatorOptions = &scyllav1alpha1.AlternatorOptions{}
+				return sdc
+			}(),
 			enableTLSFeatureGate: true,
 			expectedCM: &corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{
@@ -3618,6 +3786,102 @@ alternator_https_port: 8043
 alternator_encryption_options:
   certificate: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/alternator-serving-certs/tls.crt"
   keyfile: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/alternator-serving-certs/tls.key"
+`, "\n"),
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "non-propagated annotations are not propagated",
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				for _, k := range nonPropagatedAnnotationKeys {
+					metav1.SetMetaDataAnnotation(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			enableTLSFeatureGate: false,
+			expectedCM: &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ConfigMap",
+					APIVersion: "v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   "foo-ns",
+					Name:        "foo-managed-config",
+					Annotations: map[string]string{},
+					Labels: map[string]string{
+						"app":                          "scylla",
+						"app.kubernetes.io/managed-by": "scylla-operator",
+						"app.kubernetes.io/name":       "scylla",
+						"scylla/cluster":               "foo",
+						"user-label":                   "user-label-value",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "scylla.scylladb.com/v1alpha1",
+							Kind:               "ScyllaDBDatacenter",
+							Name:               "foo",
+							UID:                "uid-42",
+							Controller:         pointer.Ptr(true),
+							BlockOwnerDeletion: pointer.Ptr(true),
+						},
+					},
+				},
+				Data: map[string]string{
+					"scylladb-managed-config.yaml": strings.TrimPrefix(`
+cluster_name: "foo-cluster"
+rpc_address: "0.0.0.0"
+endpoint_snitch: "GossipingPropertyFileSnitch"
+internode_compression: "all"
+`, "\n"),
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "non-propagated labels are not propagated",
+			sdc: func() *scyllav1alpha1.ScyllaDBDatacenter {
+				sdc := newBasicScyllaDBDatacenter()
+				for _, k := range nonPropagatedLabelKeys {
+					metav1.SetMetaDataLabel(&sdc.ObjectMeta, k, "")
+				}
+				return sdc
+			}(),
+			enableTLSFeatureGate: false,
+			expectedCM: &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ConfigMap",
+					APIVersion: "v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   "foo-ns",
+					Name:        "foo-managed-config",
+					Annotations: map[string]string{},
+					Labels: map[string]string{
+						"app":                          "scylla",
+						"app.kubernetes.io/managed-by": "scylla-operator",
+						"app.kubernetes.io/name":       "scylla",
+						"scylla/cluster":               "foo",
+						"user-label":                   "user-label-value",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "scylla.scylladb.com/v1alpha1",
+							Kind:               "ScyllaDBDatacenter",
+							Name:               "foo",
+							UID:                "uid-42",
+							Controller:         pointer.Ptr(true),
+							BlockOwnerDeletion: pointer.Ptr(true),
+						},
+					},
+				},
+				Data: map[string]string{
+					"scylladb-managed-config.yaml": strings.TrimPrefix(`
+cluster_name: "foo-cluster"
+rpc_address: "0.0.0.0"
+endpoint_snitch: "GossipingPropertyFileSnitch"
+internode_compression: "all"
 `, "\n"),
 				},
 			},
@@ -3814,6 +4078,226 @@ prefer_local=false
 						"cassandra-rackdc.properties": strings.TrimLeft(`
 dc=dc0
 rack=rack0
+prefer_local=false
+`, "\n"),
+					},
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "non-propagated annotations are not propagated",
+			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "foo-ns",
+					Name:      "foo",
+					UID:       "uid-42",
+					Labels: map[string]string{
+						"user-label": "user-label-value",
+					},
+					Annotations: func() map[string]string {
+						annotations := map[string]string{
+							"user-annotation": "user-annotation-value",
+						}
+						for _, k := range nonPropagatedAnnotationKeys {
+							annotations[k] = ""
+						}
+						return annotations
+					}(),
+				},
+				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
+					ClusterName: "foo-cluster",
+					Racks: []scyllav1alpha1.RackSpec{
+						{
+							Name: "rack0",
+						},
+						{
+							Name: "rack1",
+						},
+					},
+				},
+			},
+			expectedCMs: []*corev1.ConfigMap{
+				{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "ConfigMap",
+						APIVersion: "v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "foo-ns",
+						Name:      "foo-rack0-snitch-config",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"app.kubernetes.io/name":       "scylla",
+							"scylla/cluster":               "foo",
+							"user-label":                   "user-label-value",
+						},
+						Annotations: map[string]string{
+							"user-annotation": "user-annotation-value",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "foo",
+								UID:                "uid-42",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Data: map[string]string{
+						"cassandra-rackdc.properties": strings.TrimLeft(`
+dc=foo
+rack=rack0
+prefer_local=false
+`, "\n"),
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "ConfigMap",
+						APIVersion: "v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "foo-ns",
+						Name:      "foo-rack1-snitch-config",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"app.kubernetes.io/name":       "scylla",
+							"scylla/cluster":               "foo",
+							"user-label":                   "user-label-value",
+						},
+						Annotations: map[string]string{
+							"user-annotation": "user-annotation-value",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "foo",
+								UID:                "uid-42",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Data: map[string]string{
+						"cassandra-rackdc.properties": strings.TrimLeft(`
+dc=foo
+rack=rack1
+prefer_local=false
+`, "\n"),
+					},
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "non-propagated labels are not propagated",
+			sdc: &scyllav1alpha1.ScyllaDBDatacenter{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "foo-ns",
+					Name:      "foo",
+					UID:       "uid-42",
+					Labels: func() map[string]string {
+						labels := map[string]string{
+							"user-label": "user-label-value",
+						}
+						for _, k := range nonPropagatedLabelKeys {
+							labels[k] = ""
+						}
+						return labels
+					}(),
+					Annotations: map[string]string{
+						"user-annotation": "user-annotation-value",
+					},
+				},
+				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
+					ClusterName: "foo-cluster",
+					Racks: []scyllav1alpha1.RackSpec{
+						{
+							Name: "rack0",
+						},
+						{
+							Name: "rack1",
+						},
+					},
+				},
+			},
+			expectedCMs: []*corev1.ConfigMap{
+				{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "ConfigMap",
+						APIVersion: "v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "foo-ns",
+						Name:      "foo-rack0-snitch-config",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"app.kubernetes.io/name":       "scylla",
+							"scylla/cluster":               "foo",
+							"user-label":                   "user-label-value",
+						},
+						Annotations: map[string]string{
+							"user-annotation": "user-annotation-value",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "foo",
+								UID:                "uid-42",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Data: map[string]string{
+						"cassandra-rackdc.properties": strings.TrimLeft(`
+dc=foo
+rack=rack0
+prefer_local=false
+`, "\n"),
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "ConfigMap",
+						APIVersion: "v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "foo-ns",
+						Name:      "foo-rack1-snitch-config",
+						Labels: map[string]string{
+							"app":                          "scylla",
+							"app.kubernetes.io/managed-by": "scylla-operator",
+							"app.kubernetes.io/name":       "scylla",
+							"scylla/cluster":               "foo",
+							"user-label":                   "user-label-value",
+						},
+						Annotations: map[string]string{
+							"user-annotation": "user-annotation-value",
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "scylla.scylladb.com/v1alpha1",
+								Kind:               "ScyllaDBDatacenter",
+								Name:               "foo",
+								UID:                "uid-42",
+								Controller:         pointer.Ptr(true),
+								BlockOwnerDeletion: pointer.Ptr(true),
+							},
+						},
+					},
+					Data: map[string]string{
+						"cassandra-rackdc.properties": strings.TrimLeft(`
+dc=foo
+rack=rack1
 prefer_local=false
 `, "\n"),
 					},
