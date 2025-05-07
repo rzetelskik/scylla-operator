@@ -255,4 +255,7 @@ const (
 
 	ScyllaDBManagerClusterRegistrationFinalizer              = "scylla-operator.scylladb.com/scylladbmanagerclusterregistration-deletion"
 	ScyllaDBManagerClusterRegistrationNameOverrideAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-cluster-name-override"
+
+	ScyllaDBManagerTaskNameOverrideAnnotation            = "internal.scylla-operator.scylladb.com/scylladb-manager-task-name-override"
+	ScyllaDBManagerTaskRepairIntensityOverrideAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-task-repair-intensity-override"
 )

@@ -58,7 +58,7 @@ func (smtc *Controller) sync(ctx context.Context, key string) error {
 		managerControllerDegradedCondition,
 		smt.Generation,
 		func() ([]metav1.Condition, error) {
-			return smtc.syncManager(ctx, smt)
+			return smtc.syncManager(ctx, smt, status)
 		},
 	)
 	if err != nil {

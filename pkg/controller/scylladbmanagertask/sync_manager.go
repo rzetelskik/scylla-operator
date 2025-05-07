@@ -6,7 +6,9 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/scylladb/scylla-manager/v3/pkg/managerclient"
 	"github.com/scylladb/scylla-manager/v3/pkg/util/uuid"
 	"github.com/scylladb/scylla-manager/v3/swagger/gen/scylla-manager/models"
@@ -62,7 +64,7 @@ func (smtc *Controller) syncManager(
 	}
 
 	clusterID := *smcr.Status.ClusterID
-	requiredManagerTask, err := makeRequiredScyllaDBManagerTask(smt, clusterID)
+	requiredManagerTask, err := makeRequiredScyllaDBManagerClientTask(smt, clusterID)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't make required ScyllaDB Manager task: %w", err)
 	}
@@ -156,7 +158,7 @@ func getScyllaDBManagerClusterRegistrationName(smt *scyllav1alpha1.ScyllaDBManag
 }
 
 func getScyllaDBManagerTask(ctx context.Context, smt *scyllav1alpha1.ScyllaDBManagerTask, clusterID string, managerClient *managerclient.Client) (*managerclient.TaskListItem, bool, error) {
-	taskType, err := getScyllaDBManagerTaskType(smt)
+	taskType, err := scyllaDBManagerClientTaskType(smt)
 	if err != nil {
 		return nil, false, fmt.Errorf("can't get ScyllaDB Manager task type: %w", err)
 	}
@@ -191,10 +193,77 @@ func getScyllaDBManagerTask(ctx context.Context, smt *scyllav1alpha1.ScyllaDBMan
 	return nil, false, nil
 }
 
-func makeRequiredScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask, clusterID string) (*managerclient.Task, error) {
-	taskType, err := getScyllaDBManagerTaskType(smt)
+func makeRequiredScyllaDBManagerClientTask(smt *scyllav1alpha1.ScyllaDBManagerTask, clusterID string) (*managerclient.Task, error) {
+	taskType, err := scyllaDBManagerClientTaskType(smt)
 	if err != nil {
 		return nil, fmt.Errorf("can't get ScyllaDB Manager task type: %w", err)
+	}
+
+	schedule := &managerclient.Schedule{}
+	properties := map[string]any{}
+
+	switch smt.Spec.Type {
+	case scyllav1alpha1.ScyllaDBManagerTaskTypeBackup:
+
+	case scyllav1alpha1.ScyllaDBManagerTaskTypeRepair:
+		if smt.Spec.Repair.ScyllaDBManagerTaskSchedule.Cron != nil {
+			schedule.Cron = *smt.Spec.Repair.ScyllaDBManagerTaskSchedule.Cron
+		}
+
+		if smt.Spec.Repair.ScyllaDBManagerTaskSchedule.StartDate != nil {
+			schedule.StartDate = pointer.Ptr(strfmt.DateTime(smt.Spec.Repair.ScyllaDBManagerTaskSchedule.StartDate.Time))
+		}
+
+		if smt.Spec.Repair.ScyllaDBManagerTaskSchedule.NumRetries != nil {
+			schedule.NumRetries = *smt.Spec.Repair.ScyllaDBManagerTaskSchedule.NumRetries
+		}
+
+		// TODO: override interval
+		// TODO: override start date
+		// TODO: override timezone
+
+		if smt.Spec.Repair.DC != nil {
+			properties["dc"] = smt.Spec.Repair.DC
+		}
+
+		if smt.Spec.Repair.Keyspace != nil {
+			properties["keyspace"] = smt.Spec.Repair.Keyspace
+		}
+
+		if smt.Spec.Repair.FailFast != nil {
+			properties["fail_fast"] = *smt.Spec.Repair.FailFast
+		}
+
+		if smt.Spec.Repair.Host != nil {
+			properties["host"] = *smt.Spec.Repair.Host
+		}
+
+		if smt.Spec.Repair.Intensity != nil {
+			properties["intensity"] = *smt.Spec.Repair.Intensity
+		}
+
+		intensityOverrideAnnotation, hasIntensityOverrideAnnotation := smt.Annotations[naming.ScyllaDBManagerTaskRepairIntensityOverrideAnnotation]
+		if hasIntensityOverrideAnnotation {
+			intensity, err := strconv.ParseFloat(intensityOverrideAnnotation, 64)
+			if err != nil {
+				return nil, fmt.Errorf("can't parse intensity: %w", err)
+			}
+
+			properties["intensity"] = intensity
+		}
+
+		if smt.Spec.Repair.Parallel != nil {
+			properties["parallel"] = *smt.Spec.Repair.Parallel
+		}
+
+		if smt.Spec.Repair.SmallTableThreshold != nil {
+			// TODO: make sure this is correct
+			properties["small_table_threshold"] = smt.Spec.Repair.SmallTableThreshold.Value()
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported scyllaDBManagerTask type: %q", smt.Spec.Type)
+
 	}
 
 	requiredManagerTask := &managerclient.Task{
@@ -203,12 +272,12 @@ func makeRequiredScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask, cl
 		Labels: map[string]string{
 			naming.OwnerUIDLabel: string(smt.UID),
 		},
-		// TODO: name
-		Name: smt.Name,
+		// TODO: test task name override
+		Name: scyllaDBManagerClientTaskName(smt),
 		// TODO: properties
-		Properties: nil,
+		Properties: properties,
 		// TODO: schedule
-		Schedule: nil,
+		Schedule: schedule,
 		Type:     taskType,
 	}
 
@@ -221,7 +290,16 @@ func makeRequiredScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask, cl
 	return requiredManagerTask, nil
 }
 
-func getScyllaDBManagerTaskType(smt *scyllav1alpha1.ScyllaDBManagerTask) (string, error) {
+func scyllaDBManagerClientTaskName(smt *scyllav1alpha1.ScyllaDBManagerTask) string {
+	nameOverrideAnnotationValue, hasNameOverrideAnnotation := smt.Annotations[naming.ScyllaDBManagerTaskNameOverrideAnnotation]
+	if hasNameOverrideAnnotation {
+		return nameOverrideAnnotationValue
+	}
+
+	return smt.Name
+}
+
+func scyllaDBManagerClientTaskType(smt *scyllav1alpha1.ScyllaDBManagerTask) (string, error) {
 	switch smt.Spec.Type {
 	case scyllav1alpha1.ScyllaDBManagerTaskTypeBackup:
 		return managerclient.BackupTask, nil

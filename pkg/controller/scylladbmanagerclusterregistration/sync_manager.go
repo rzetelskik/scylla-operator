@@ -173,6 +173,8 @@ func makeRequiredScyllaDBManagerCluster(name, ownerUID, host, authToken string) 
 		Labels: map[string]string{
 			naming.OwnerUIDLabel: ownerUID,
 		},
+		// TODO: without repair!!
+		//WithoutRepair: true,
 	}
 
 	managedHash, err := hashutil.HashObjects(requiredManagerCluster)
