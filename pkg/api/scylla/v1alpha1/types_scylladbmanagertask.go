@@ -76,10 +76,12 @@ type ScyllaDBManagerRepairTaskOptions struct {
 	// schedule specifies the schedule on which the repair task is run.
 	ScyllaDBManagerTaskSchedule `json:",inline"`
 
+	// TODO: remove "separated by commas"
 	// dc specifies a list of datacenter `glob` patterns separated by commas, e.g. `dc1,!otherdc*`, determining the datacenters to include or exclude from repair.
 	// +optional
 	DC []string `json:"dc,omitempty"`
 
+	// TODO: remove "separated by commas"
 	// keyspace specifies a list of `glob` patterns separated by commas used to include or exclude tables from repair.
 	// The patterns match keyspaces and tables. Keyspace names are separated from table names with a dot e.g. `keyspace,!keyspace.table_prefix_*`.
 	// +optional
@@ -97,7 +99,7 @@ type ScyllaDBManagerRepairTaskOptions struct {
 	Host *string `json:"host,omitempty"`
 
 	// intensity specifies the number of token ranges to repair in a single ScyllaDB node at the same time.
-	// Changing the intensity impacts the repair granularity in case it is resumed. The higher the value the more work on resumption.
+	// Changing the intensity impacts the repair granularity in case it is resumed. The higher the value, the more work on resumption.
 	// When set to zero, the number of token ranges is adjusted to the maximum supported number.
 	// When set to a value greater than the maximum supported by the node, intensity is capped at the maximum supported value.
 	// Refer to repair documentation for details.
