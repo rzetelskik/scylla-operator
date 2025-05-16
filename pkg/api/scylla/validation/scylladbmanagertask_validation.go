@@ -32,9 +32,7 @@ type ValidateScyllaDBManagerTaskObjectMetaOptions struct {
 }
 
 type ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions struct {
-	// TODO: change this to IsScheduleCronDefined
-	ValidateIntervalOverride func(string, bool, *field.Path) field.ErrorList
-	ValidateTimezoneOverride func(string, bool, *field.Path) field.ErrorList
+	IsScyllaDBManagerTaskScheduleCronNil bool
 }
 
 // TODO: fix nested embedding conflicts
@@ -57,62 +55,33 @@ type ValidateScyllaDBManagerTaskScheduleOptions struct {
 func ValidateScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask) field.ErrorList {
 	allErrs := field.ErrorList{}
 
-	// TODO: make object meta validation options
-	validateObjectMetaOptions := &ValidateScyllaDBManagerTaskObjectMetaOptions{}
-
+	validateObjectMetaOptions := makeValidateScyllaDBManagerTaskObjectMetaOptions(smt)
 	allErrs = append(allErrs, ValidateScyllaDBManagerTaskObjectMeta(&smt.ObjectMeta, validateObjectMetaOptions, field.NewPath("metadata"))...)
 
-	// TODO: make task spec validation options
-	validateTaskSpecOptions := &ValidateScyllaDBManagerTaskSpecOptions{}
-
+	validateTaskSpecOptions := makeValidateScyllaDBManagerTaskSpecOptions(smt)
 	allErrs = append(allErrs, ValidateScyllaDBManagerTaskSpec(&smt.Spec, validateTaskSpecOptions, field.NewPath("spec"))...)
 
 	return allErrs
 }
 
 func makeValidateScyllaDBManagerTaskObjectMetaOptions(smt *scyllav1alpha1.ScyllaDBManagerTask) *ValidateScyllaDBManagerTaskObjectMetaOptions {
-	options := &ValidateScyllaDBManagerTaskObjectMetaOptions{
+	isScheduleCronNil := (smt.Spec.Backup == nil || smt.Spec.Backup.Cron == nil) && (smt.Spec.Repair == nil && smt.Spec.Repair.Cron == nil)
+
+	return &ValidateScyllaDBManagerTaskObjectMetaOptions{
 		ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions: ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions{
-			ValidateIntervalOverride: nil,
-			ValidateTimezoneOverride: nil,
+			IsScyllaDBManagerTaskScheduleCronNil: isScheduleCronNil,
 		},
 	}
+}
 
-	isScheduleCronDefined := (smt.Spec.Backup != nil && smt.Spec.Backup.Cron != nil) || (smt.Spec.Repair != nil && smt.Spec.Repair.Cron != nil)
-	if isScheduleCronDefined {
-		options.ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions.ValidateIntervalOverride =
-			func(interval string, hasInterval bool, fldPath *field.Path) field.ErrorList {
-				allErrs := field.ErrorList{}
-
-				if !hasInterval {
-					return allErrs
-				}
-
-				intervalDuration, err := duration.ParseDuration(interval)
-				if err != nil {
-					allErrs = append(allErrs, field.Invalid(fldPath, interval, "valid units are d, h, m, s"))
-				} else if intervalDuration != 0 {
-					allErrs = append(allErrs, field.Forbidden(fldPath, "can't be non-zero when cron is specified"))
-				}
-
-				return allErrs
-			}
-
-		options.ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions.ValidateTimezoneOverride =
-			func(timezone string, hasTimezone bool, fldPath *field.Path) field.ErrorList {
-				allErrs := field.ErrorList{}
-
-				if !hasTimezone {
-					return allErrs
-				}
-
-				_, err := time.LoadLocation(timezone)
-				if err != nil {
-					allErrs = append(allErrs, field.Invalid(fldPath, timezone, err.Error()))
-				}
-
-				return allErrs
-			}
+func makeValidateScyllaDBManagerTaskSpecOptions(smt *scyllav1alpha1.ScyllaDBManagerTask) *ValidateScyllaDBManagerTaskSpecOptions {
+	options := &ValidateScyllaDBManagerTaskSpecOptions{
+		ValidateScyllaDBManagerBackupTaskOptionsOptions: ValidateScyllaDBManagerBackupTaskOptionsOptions{
+			ValidateScyllaDBManagerTaskScheduleOptions: ValidateScyllaDBManagerTaskScheduleOptions{},
+		},
+		ValidateScyllaDBManagerRepairTaskOptionsOptions: ValidateScyllaDBManagerRepairTaskOptionsOptions{
+			ValidateScyllaDBManagerTaskScheduleOptions: ValidateScyllaDBManagerTaskScheduleOptions{},
+		},
 	}
 
 	return options
@@ -137,8 +106,13 @@ func ValidateScyllaDBManagerTaskObjectMetaAnnotations(annotations map[string]str
 	}
 
 	intervalOverrideAnnotation, hasIntervalOverrideAnnotation := annotations[naming.ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation]
-	if hasIntervalOverrideAnnotation && options.ValidateIntervalOverride != nil {
-		allErrs = append(allErrs, options.ValidateIntervalOverride(intervalOverrideAnnotation, hasIntervalOverrideAnnotation, fldPath.Key(naming.ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation))...)
+	if hasIntervalOverrideAnnotation && !options.IsScyllaDBManagerTaskScheduleCronNil {
+		intervalDuration, err := duration.ParseDuration(intervalOverrideAnnotation)
+		if err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Key(naming.ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation), intervalOverrideAnnotation, "valid units are d, h, m, s"))
+		} else if intervalDuration != 0 {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Key(naming.ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation), "can't be non-zero when cron is specified"))
+		}
 	}
 
 	timezoneOverrideAnnotation, hasTimezoneOverrideAnnotation := annotations[naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation]
@@ -148,8 +122,8 @@ func ValidateScyllaDBManagerTaskObjectMetaAnnotations(annotations map[string]str
 			allErrs = append(allErrs, field.Invalid(fldPath.Key(naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation), timezoneOverrideAnnotation, err.Error()))
 		}
 
-		if options.ValidateTimezoneOverride != nil {
-			allErrs = append(allErrs, options.ValidateTimezoneOverride(timezoneOverrideAnnotation, hasTimezoneOverrideAnnotation, fldPath.Key(naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation))...)
+		if options.IsScyllaDBManagerTaskScheduleCronNil {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Key(naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation), "can't be set when cron is not specified"))
 		}
 	}
 
@@ -163,14 +137,8 @@ func ValidateScyllaDBManagerTaskObjectMetaAnnotations(annotations map[string]str
 
 	/*
 		TODO:
-		OK naming.ScyllaDBManagerTaskNameOverrideAnnotation
-		OK, HAVE TO ADD CRON naming.ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation
-		CAN'T STRENGTHEN naming.ScyllaDBManagerTaskScheduleStartDateOverrideAnnotation
-		HAVE TO ADD CRON naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation
-		OK naming.ScyllaDBManagerTaskRepairIntensityOverrideAnnotation
-
 		backup location
-		repair smallTableThreshold?
+		repair smallTableThres hold?
 	*/
 
 	return allErrs
