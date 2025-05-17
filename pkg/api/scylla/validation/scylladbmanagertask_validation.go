@@ -32,7 +32,8 @@ type ValidateScyllaDBManagerTaskObjectMetaOptions struct {
 }
 
 type ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions struct {
-	IsScyllaDBManagerTaskScheduleCronNil bool
+	IsScyllaDBManagerTaskScheduleCronNil    bool
+	IsScyllaDBManagerTaskRepairIntensityNil bool
 }
 
 // TODO: fix nested embedding conflicts
@@ -43,6 +44,7 @@ type ValidateScyllaDBManagerTaskSpecOptions struct {
 
 type ValidateScyllaDBManagerBackupTaskOptionsOptions struct {
 	ValidateScyllaDBManagerTaskScheduleOptions
+	IsLocationValidationDisabled bool
 }
 
 type ValidateScyllaDBManagerRepairTaskOptionsOptions struct {
@@ -65,26 +67,29 @@ func ValidateScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask) field.
 }
 
 func makeValidateScyllaDBManagerTaskObjectMetaOptions(smt *scyllav1alpha1.ScyllaDBManagerTask) *ValidateScyllaDBManagerTaskObjectMetaOptions {
-	isScheduleCronNil := (smt.Spec.Backup == nil || smt.Spec.Backup.Cron == nil) && (smt.Spec.Repair == nil && smt.Spec.Repair.Cron == nil)
+	isScheduleCronNil := (smt.Spec.Backup == nil || smt.Spec.Backup.Cron == nil) && (smt.Spec.Repair == nil || smt.Spec.Repair.Cron == nil)
+	isRepairIntensityNil := smt.Spec.Repair == nil || smt.Spec.Repair.Intensity == nil
 
 	return &ValidateScyllaDBManagerTaskObjectMetaOptions{
 		ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions: ValidateScyllaDBManagerTaskObjectMetaAnnotationsOptions{
-			IsScyllaDBManagerTaskScheduleCronNil: isScheduleCronNil,
+			IsScyllaDBManagerTaskScheduleCronNil:    isScheduleCronNil,
+			IsScyllaDBManagerTaskRepairIntensityNil: isRepairIntensityNil,
 		},
 	}
 }
 
 func makeValidateScyllaDBManagerTaskSpecOptions(smt *scyllav1alpha1.ScyllaDBManagerTask) *ValidateScyllaDBManagerTaskSpecOptions {
-	options := &ValidateScyllaDBManagerTaskSpecOptions{
+	isBackupLocationValidationDisabled := smt.Annotations[naming.ScyllaDBManagerTaskBackupLocationDisableValidationAnnotation] == naming.AnnotationValueTrue
+
+	return &ValidateScyllaDBManagerTaskSpecOptions{
 		ValidateScyllaDBManagerBackupTaskOptionsOptions: ValidateScyllaDBManagerBackupTaskOptionsOptions{
 			ValidateScyllaDBManagerTaskScheduleOptions: ValidateScyllaDBManagerTaskScheduleOptions{},
+			IsLocationValidationDisabled:               isBackupLocationValidationDisabled,
 		},
 		ValidateScyllaDBManagerRepairTaskOptionsOptions: ValidateScyllaDBManagerRepairTaskOptionsOptions{
 			ValidateScyllaDBManagerTaskScheduleOptions: ValidateScyllaDBManagerTaskScheduleOptions{},
 		},
 	}
-
-	return options
 }
 
 func ValidateScyllaDBManagerTaskObjectMeta(meta *metav1.ObjectMeta, options *ValidateScyllaDBManagerTaskObjectMetaOptions, fldPath *field.Path) field.ErrorList {
@@ -106,6 +111,7 @@ func ValidateScyllaDBManagerTaskObjectMetaAnnotations(annotations map[string]str
 	}
 
 	intervalOverrideAnnotation, hasIntervalOverrideAnnotation := annotations[naming.ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation]
+	// Due to backwards compatibility guarantees with scyllav1.ScyllaCluster we can only validate the interval override annotation when cron is set.
 	if hasIntervalOverrideAnnotation && !options.IsScyllaDBManagerTaskScheduleCronNil {
 		intervalDuration, err := duration.ParseDuration(intervalOverrideAnnotation)
 		if err != nil {
@@ -133,12 +139,15 @@ func ValidateScyllaDBManagerTaskObjectMetaAnnotations(annotations map[string]str
 		if err != nil {
 			allErrs = append(allErrs, field.Invalid(fldPath.Key(naming.ScyllaDBManagerTaskRepairIntensityOverrideAnnotation), repairIntensityOverrideAnnotation, "must be a float"))
 		}
+
+		if !options.IsScyllaDBManagerTaskRepairIntensityNil {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Key(naming.ScyllaDBManagerTaskRepairIntensityOverrideAnnotation), "can't be used together with repair intensity"))
+		}
 	}
 
 	/*
 		TODO:
-		backup location
-		repair smallTableThres hold?
+		repair smallTableThreshold?
 	*/
 
 	return allErrs
@@ -149,7 +158,6 @@ func ValidateScyllaDBManagerTaskSpec(spec *scyllav1alpha1.ScyllaDBManagerTaskSpe
 
 	allErrs = append(allErrs, ValidateLocalScyllaDBReference(&spec.ScyllaDBClusterRef, fldPath.Child("scyllaDBClusterRef"))...)
 
-	// TODO: switch to enum?
 	switch spec.Type {
 	case scyllav1alpha1.ScyllaDBManagerTaskTypeBackup:
 		if spec.Backup == nil {
@@ -166,9 +174,6 @@ func ValidateScyllaDBManagerTaskSpec(spec *scyllav1alpha1.ScyllaDBManagerTaskSpe
 		}
 
 		allErrs = append(allErrs, ValidateScyllaDBManagerRepairTaskOptions(spec.Repair, &options.ValidateScyllaDBManagerRepairTaskOptionsOptions, fldPath.Child("repair"))...)
-
-	case "":
-		allErrs = append(allErrs, field.Required(fldPath.Child("type"), ""))
 
 	default:
 		allErrs = append(allErrs, field.NotSupported(fldPath.Child("type"), spec.Type, slices.ConvertSlice(supportedScyllaDBManagerTaskTypes, slices.ToString)))
@@ -191,9 +196,16 @@ func ValidateScyllaDBManagerBackupTaskOptions(backupOptions *scyllav1alpha1.Scyl
 
 	allErrs = append(allErrs, ValidateScyllaDBManagerTaskSchedule(&backupOptions.ScyllaDBManagerTaskSchedule, &options.ValidateScyllaDBManagerTaskScheduleOptions, fldPath)...)
 
-	// TODO: annotation override
-	if backupOptions.Location == nil || len(backupOptions.Location) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("location"), "location must not be empty"))
+	if !options.IsLocationValidationDisabled {
+		if backupOptions.Location == nil || len(backupOptions.Location) == 0 {
+			allErrs = append(allErrs, field.Required(fldPath.Child("location"), "location must not be empty"))
+		} else {
+			for i := range backupOptions.Location {
+				if len(backupOptions.Location[i]) == 0 {
+					allErrs = append(allErrs, field.Required(fldPath.Child("location").Index(i), "location must not be empty"))
+				}
+			}
+		}
 	}
 
 	return allErrs

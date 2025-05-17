@@ -31,6 +31,8 @@ const (
 
 	LabelValueTrue  = "true"
 	LabelValueFalse = "false"
+
+	AnnotationValueTrue = "true"
 )
 
 // Annotations used internally.
@@ -252,10 +254,11 @@ const (
 	ScyllaDBManagerClusterRegistrationFinalizer              = "scylla-operator.scylladb.com/scylladbmanagerclusterregistration-deletion"
 	ScyllaDBManagerClusterRegistrationNameOverrideAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-cluster-name-override"
 
-	ScyllaDBManagerTaskFinalizer                           = "scylla-operator.scylladb.com/scylladbmanagertask-deletion"
-	ScyllaDBManagerTaskNameOverrideAnnotation              = "internal.scylla-operator.scylladb.com/scylladb-manager-task-name-override"
-	ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation  = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-interval-override"
-	ScyllaDBManagerTaskScheduleStartDateOverrideAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-start-date-override"
-	ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation  = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-timezone-override"
-	ScyllaDBManagerTaskRepairIntensityOverrideAnnotation   = "internal.scylla-operator.scylladb.com/scylladb-manager-task-repair-intensity-override"
+	ScyllaDBManagerTaskFinalizer                                 = "scylla-operator.scylladb.com/scylladbmanagertask-deletion"
+	ScyllaDBManagerTaskNameOverrideAnnotation                    = "internal.scylla-operator.scylladb.com/scylladb-manager-task-name-override"
+	ScyllaDBManagerTaskScheduleIntervalOverrideAnnotation        = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-interval-override"
+	ScyllaDBManagerTaskScheduleStartDateOverrideAnnotation       = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-start-date-override"
+	ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation        = "internal.scylla-operator.scylladb.com/scylladb-manager-task-schedule-timezone-override"
+	ScyllaDBManagerTaskRepairIntensityOverrideAnnotation         = "internal.scylla-operator.scylladb.com/scylladb-manager-task-repair-intensity-override"
+	ScyllaDBManagerTaskBackupLocationDisableValidationAnnotation = "internal.scylla-operator.scylladb.com/scylladb-manager-task-backup-location-disable-validation"
 )
