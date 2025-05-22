@@ -5,6 +5,7 @@ package scylladbmanagertask
 import (
 	"fmt"
 
+	configassets "github.com/scylladb/scylla-operator/assets/config"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
 	batchv1 "k8s.io/api/batch/v1"
@@ -37,7 +38,6 @@ func makeJobForScyllaDBManagerTask(
 					*metav1.NewControllerRef(smt, scyllaDBManagerTaskControllerGVK),
 				},
 				Labels: getLabels(smt),
-				// TODO: annotations
 			},
 			Spec: batchv1.JobSpec{
 				Selector:       nil,
@@ -45,22 +45,20 @@ func makeJobForScyllaDBManagerTask(
 				Template: corev1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: getLabels(smt),
-						// TODO: annotations
 					},
 					Spec: corev1.PodSpec{
-						// TODO: switch to on failure?
 						RestartPolicy: restartPolicy,
 						Containers: []corev1.Container{
 							{
 								Name:            "task",
-								Image:           "docker.io/scylladb/scylla-manager:3.6.0-dev-0.20250520.1a372cfb1@sha256:04e8a9b290f2caf3b386a479ae543d9bbb73d931d2e87bc254e04a767f729d9c",
+								Image:           configassets.Project.Operator.ScyllaDBManagerVersion,
 								ImagePullPolicy: corev1.PullIfNotPresent,
 								Command: []string{
 									"sctool",
 									"repair",
-									"unsupported",
+									"hackathon",
 									fmt.Sprintf("--auth-token=%s", authToken),
-									"--data-path=TODO",
+									"--data-path=/var/lib/scylladb-manager",
 									"--force-non-ssl-session-port",
 									"--force-tls-disabled",
 									fmt.Sprintf("--host=%s", host),

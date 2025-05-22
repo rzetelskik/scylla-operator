@@ -64,6 +64,7 @@ var (
 	// Annotation keys excluded from propagation to underlying resources.
 	nonPropagatedAnnotationKeys = []string{
 		naming.ScyllaDBManagerClusterRegistrationNameOverrideAnnotation,
+		naming.ManagedHash,
 	}
 
 	// Label keys excluded from propagation to underlying resources.
@@ -2081,22 +2082,28 @@ func MakeUpgradeContextConfigMap(sdc *scyllav1alpha1.ScyllaDBDatacenter, uc *int
 }
 
 func makePropagableLabels(sdc *scyllav1alpha1.ScyllaDBDatacenter) map[string]string {
-	labels := maps.Clone(sdc.Labels)
-	for _, k := range nonPropagatedLabelKeys {
-		delete(labels, k)
+	labels := make(map[string]string, len(sdc.Labels))
+	for k, v := range sdc.Labels {
+		// TODO: switch to std slices
+		if slices.ContainsItem(nonPropagatedLabelKeys, k) {
+			continue
+		}
+
+		labels[k] = v
 	}
 	return labels
 }
 
 func makePropagableAnnotations(sdc *scyllav1alpha1.ScyllaDBDatacenter) map[string]string {
-	annotations := maps.Clone(sdc.Annotations)
-	for _, k := range nonPropagatedAnnotationKeys {
-		delete(annotations, k)
-	}
+	annotations := make(map[string]string, len(sdc.Annotations))
+	for k, v := range sdc.Annotations {
+		// TODO: switch to std slices
+		if slices.ContainsItem(nonPropagatedAnnotationKeys, k) {
+			continue
+		}
 
-	// As ScyllaDBDatacenter may be a managed object (when user is using scyllav1.ScyllaCluster API), its managed
-	// hash shouldn't be propagated into dependency objects to avoid triggering unnecessary double rollouts.
-	delete(annotations, naming.ManagedHash)
+		annotations[k] = v
+	}
 
 	return annotations
 }
