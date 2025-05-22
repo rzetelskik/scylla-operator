@@ -10,6 +10,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/pointer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -51,14 +52,14 @@ func makeJobForScyllaDBManagerTask(
 						Containers: []corev1.Container{
 							{
 								Name:            "task",
-								Image:           configassets.Project.Operator.ScyllaDBManagerVersion,
+								Image:           fmt.Sprintf("docker.io/scylladb/scylla-manager:%s", configassets.Project.Operator.ScyllaDBManagerVersion),
 								ImagePullPolicy: corev1.PullIfNotPresent,
 								Command: []string{
 									"sctool",
 									"repair",
 									"hackathon",
 									fmt.Sprintf("--auth-token=%s", authToken),
-									"--data-path=/var/lib/scylladb-manager",
+									"--data-path=/var/lib/scylladb-manager/db.db",
 									"--force-non-ssl-session-port",
 									"--force-tls-disabled",
 									fmt.Sprintf("--host=%s", host),
@@ -75,7 +76,10 @@ func makeJobForScyllaDBManagerTask(
 							{
 								Name: "data",
 								VolumeSource: corev1.VolumeSource{
-									EmptyDir: &corev1.EmptyDirVolumeSource{},
+									EmptyDir: &corev1.EmptyDirVolumeSource{
+										Medium:    "Memory",
+										SizeLimit: pointer.Ptr(resource.MustParse("10Mi")),
+									},
 								},
 							},
 						},
