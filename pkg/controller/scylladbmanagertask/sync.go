@@ -12,14 +12,27 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/helpers/slices"
 	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
+
+func getLabels(smt *scyllav1alpha1.ScyllaDBManagerTask) labels.Set {
+	return labels.Set{
+		// TODO: improve
+		"scylla-operator.scylladb.com/scylladb-manager-task-name": smt.Name,
+	}
+}
+
+func getSelector(smt *scyllav1alpha1.ScyllaDBManagerTask) labels.Selector {
+	return labels.SelectorFromSet(getLabels(smt))
+}
 
 func (smtc *Controller) sync(ctx context.Context, key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -41,44 +54,73 @@ func (smtc *Controller) sync(ctx context.Context, key string) error {
 			return nil
 		}
 
-		return fmt.Errorf("can't get ScyllaDBManagerTask %q: %w", naming.ManualRef(namespace, name), err)
+		return fmt.Errorf("caniln't get ScyllaDBManagerTask %q: %w", naming.ManualRef(namespace, name), err)
+	}
+
+	selector := getSelector(smt)
+
+	type CT = *scyllav1alpha1.ScyllaDBManagerTask
+	var objectErrs []error
+
+	jobs, err := controllerhelpers.GetObjects[CT, *batchv1.Job](
+		ctx,
+		smt,
+		scyllaDBManagerTaskControllerGVK,
+		selector,
+		controllerhelpers.ControlleeManagerGetObjectsFuncs[CT, *batchv1.Job]{
+			GetControllerUncachedFunc: smtc.scyllaClient.ScyllaDBManagerTasks(smt.Namespace).Get,
+			ListObjectsFunc:           smtc.jobLister.Jobs(smt.Namespace).List,
+			PatchObjectFunc:           smtc.kubeClient.BatchV1().Jobs(smt.Namespace).Patch,
+		},
+	)
+	if err != nil {
+		objectErrs = append(objectErrs, fmt.Errorf("can't get jobs: %w", err))
+	}
+
+	err = utilerrors.NewAggregate(objectErrs)
+	if err != nil {
+		return err
 	}
 
 	status := smtc.calculateStatus(smt)
 
 	if smt.DeletionTimestamp != nil {
-		err = controllerhelpers.RunSync(
-			&status.Conditions,
-			scyllaDBManagerTaskFinalizerProgressingCondition,
-			scyllaDBManagerTaskFinalizerDegradedCondition,
-			smt.Generation,
-			func() ([]metav1.Condition, error) {
-				return smtc.syncFinalizer(ctx, smt)
-			},
-		)
 		return smtc.updateStatus(ctx, smt, status)
 	}
 
-	if !smtc.hasFinalizer(smt.GetFinalizers()) {
-		err = smtc.addFinalizer(ctx, smt)
-		if err != nil {
-			return fmt.Errorf("can't add finalizer: %w", err)
-		}
-		return nil
-	}
+	//if !smtc.hasFinalizer(smt.GetFinalizers()) {
+	//err = smtc.addFinalizer(ctx, smt)
+	//if err != nil {
+	//	return fmt.Errorf("can't add finalizer: %w", err)
+	//}
+	//return nil
+	//}
 
 	var errs []error
+	//err = controllerhelpers.RunSync(
+	//	&status.Conditions,
+	//	managerControllerProgressingCondition,
+	//	managerControllerDegradedCondition,
+	//	smt.Generation,
+	//	func() ([]metav1.Condition, error) {
+	//		return smtc.syncManager(ctx, smt, status)
+	//	},
+	//)
+	//if err != nil {
+	//	errs = append(errs, fmt.Errorf("can't sync manager: %w", err))
+	//}
+
 	err = controllerhelpers.RunSync(
 		&status.Conditions,
-		managerControllerProgressingCondition,
-		managerControllerDegradedCondition,
+		jobControllerProgressingCondition,
+		jobControllerDegradedCondition,
 		smt.Generation,
 		func() ([]metav1.Condition, error) {
-			return smtc.syncManager(ctx, smt, status)
+			return smtc.syncJobs(ctx, smt, jobs, status)
 		},
 	)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("can't sync manager: %w", err))
+		errs = append(errs, fmt.Errorf("can't sync jobs: %w", err))
 	}
 
 	var aggregationErrs []error

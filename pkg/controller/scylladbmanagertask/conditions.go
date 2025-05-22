@@ -7,4 +7,8 @@ const (
 	managerControllerDegradedCondition               = "ManagerControllerDegraded"
 	scyllaDBManagerTaskFinalizerProgressingCondition = "ScyllaDBManagerTaskFinalizerProgressing"
 	scyllaDBManagerTaskFinalizerDegradedCondition    = "ScyllaDBManagerTaskFinalizerDegraded"
+
+	// Hackathon
+	jobControllerProgressingCondition = "JobControllerProgressing"
+	jobControllerDegradedCondition    = "JobControllerDegraded"
 )

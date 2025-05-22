@@ -15,16 +15,21 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
-	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	batchv1informers "k8s.io/client-go/informers/batch/v1"
+	corev1informers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	batchv1listers "k8s.io/client-go/listers/batch/v1"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -50,8 +55,11 @@ type Controller struct {
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface
 
-	scyllaDBManagerTaskLister                scyllav1alpha1listers.ScyllaDBManagerTaskLister
-	scyllaDBManagerClusterRegistrationLister scyllav1alpha1listers.ScyllaDBManagerClusterRegistrationLister
+	scyllaDBManagerTaskLister scyllav1alpha1listers.ScyllaDBManagerTaskLister
+	//scyllaDBManagerClusterRegistrationLister scyllav1alpha1listers.ScyllaDBManagerClusterRegistrationLister
+	scyllaDBDatacenterLister scyllav1alpha1listers.ScyllaDBDatacenterLister
+	secretLister             corev1listers.SecretLister
+	jobLister                batchv1listers.JobLister
 
 	cachesToSync []cache.InformerSynced
 
@@ -65,7 +73,9 @@ func NewController(
 	kubeClient kubernetes.Interface,
 	scyllaClient scyllav1alpha1client.ScyllaV1alpha1Interface,
 	scyllaDBManagerTaskInformer scyllav1alpha1informers.ScyllaDBManagerTaskInformer,
-	scylladbManagerClusterRegistrationInformer scyllav1alpha1informers.ScyllaDBManagerClusterRegistrationInformer,
+	scyllaDBDatacenterInformer scyllav1alpha1informers.ScyllaDBDatacenterInformer,
+	secretInformer corev1informers.SecretInformer,
+	jobInformer batchv1informers.JobInformer,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
@@ -75,12 +85,16 @@ func NewController(
 		kubeClient:   kubeClient,
 		scyllaClient: scyllaClient,
 
-		scyllaDBManagerTaskLister:                scyllaDBManagerTaskInformer.Lister(),
-		scyllaDBManagerClusterRegistrationLister: scylladbManagerClusterRegistrationInformer.Lister(),
+		scyllaDBManagerTaskLister: scyllaDBManagerTaskInformer.Lister(),
+		scyllaDBDatacenterLister:  scyllaDBDatacenterInformer.Lister(),
+		secretLister:              secretInformer.Lister(),
+		jobLister:                 jobInformer.Lister(),
 
 		cachesToSync: []cache.InformerSynced{
 			scyllaDBManagerTaskInformer.Informer().HasSynced,
-			scylladbManagerClusterRegistrationInformer.Informer().HasSynced,
+			scyllaDBDatacenterInformer.Informer().HasSynced,
+			secretInformer.Informer().HasSynced,
+			jobInformer.Informer().HasSynced,
 		},
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "scylladbmanagertask-controller"}),
@@ -113,10 +127,22 @@ func NewController(
 		DeleteFunc: smtc.deleteScyllaDBManagerTask,
 	})
 
-	scylladbManagerClusterRegistrationInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    smtc.addScyllaDBManagerClusterRegistration,
-		UpdateFunc: smtc.updateScyllaDBManagerClusterRegistration,
-		DeleteFunc: smtc.deleteScyllaDBManagerClusterRegistration,
+	scyllaDBDatacenterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smtc.addScyllaDBDatacenter,
+		UpdateFunc: smtc.updateScyllaDBDatacenter,
+		DeleteFunc: smtc.deleteScyllaDBDatacenter,
+	})
+
+	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smtc.addSecret,
+		UpdateFunc: smtc.updateSecret,
+		DeleteFunc: smtc.deleteSecret,
+	})
+
+	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smtc.addJob,
+		UpdateFunc: smtc.updateJob,
+		DeleteFunc: smtc.deleteJob,
 	})
 
 	return smtc, nil
@@ -217,37 +243,106 @@ func (smtc *Controller) deleteScyllaDBManagerTask(obj interface{}) {
 	)
 }
 
-func (smtc *Controller) addScyllaDBManagerClusterRegistration(obj interface{}) {
+func (smtc *Controller) addScyllaDBDatacenter(obj interface{}) {
 	smtc.handlers.HandleAdd(
-		obj.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration),
-		smtc.enqueueThroughScyllaDBManagerClusterRegistration(obj.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)),
+		obj.(*scyllav1alpha1.ScyllaDBDatacenter),
+		smtc.handlers.EnqueueAllFunc(smtc.enqueueThroughScyllaDBDatacenter(obj.(*scyllav1alpha1.ScyllaDBDatacenter))),
 	)
 }
 
-func (smtc *Controller) updateScyllaDBManagerClusterRegistration(old, cur interface{}) {
+func (smtc *Controller) updateScyllaDBDatacenter(old, cur interface{}) {
 	smtc.handlers.HandleUpdate(
-		cur.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration),
-		old.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration),
-		smtc.enqueueThroughScyllaDBManagerClusterRegistration(cur.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)),
-		smtc.deleteScyllaDBManagerClusterRegistration,
+		old.(*scyllav1alpha1.ScyllaDBDatacenter),
+		cur.(*scyllav1alpha1.ScyllaDBDatacenter),
+		smtc.handlers.EnqueueAllFunc(smtc.enqueueThroughScyllaDBDatacenter(cur.(*scyllav1alpha1.ScyllaDBDatacenter))), smtc.deleteScyllaDBDatacenter,
 	)
 }
 
-func (smtc *Controller) deleteScyllaDBManagerClusterRegistration(obj interface{}) {
+func (smtc *Controller) deleteScyllaDBDatacenter(obj interface{}) {
 	smtc.handlers.HandleDelete(
 		obj,
-		smtc.enqueueThroughScyllaDBManagerClusterRegistration(obj.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)),
+		smtc.handlers.EnqueueAllFunc(smtc.enqueueThroughScyllaDBDatacenter(obj.(*scyllav1alpha1.ScyllaDBDatacenter))))
+}
+
+func (smtc *Controller) addSecret(obj interface{}) {
+	smtc.handlers.HandleAdd(
+		obj.(*corev1.Secret),
+		smtc.enqueueThroughOwner,
 	)
 }
 
-func (smtc *Controller) enqueueThroughScyllaDBManagerClusterRegistration(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) controllerhelpers.EnqueueFuncType {
-	return smtc.handlers.EnqueueAllFunc(smtc.handlers.EnqueueWithFilterFunc(func(smt *scyllav1alpha1.ScyllaDBManagerTask) bool {
-		smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBManagerTask(smt)
+func (smtc *Controller) updateSecret(old, cur interface{}) {
+	smtc.handlers.HandleUpdate(
+		old.(*corev1.Secret),
+		cur.(*corev1.Secret),
+		smtc.enqueueThroughOwner,
+		smtc.deleteSecret,
+	)
+}
+
+func (smtc *Controller) deleteSecret(obj interface{}) {
+	smtc.handlers.HandleDelete(
+		obj,
+		smtc.enqueueThroughOwner,
+	)
+}
+
+func (smtc *Controller) addJob(obj interface{}) {
+	smtc.handlers.HandleAdd(
+		obj.(*batchv1.Job),
+		smtc.handlers.EnqueueOwner,
+	)
+}
+
+func (smtc *Controller) updateJob(old, cur interface{}) {
+	smtc.handlers.HandleUpdate(
+		old.(*batchv1.Job),
+		cur.(*batchv1.Job),
+		smtc.handlers.EnqueueOwner,
+		smtc.deleteJob,
+	)
+}
+
+func (smtc *Controller) deleteJob(obj interface{}) {
+	smtc.handlers.HandleDelete(
+		obj,
+		smtc.handlers.EnqueueOwner,
+	)
+}
+
+func (smtc *Controller) enqueueThroughOwner(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	controllerRef := metav1.GetControllerOf(obj)
+	if controllerRef == nil {
+		return
+	}
+
+	switch controllerRef.Kind {
+	case scyllav1alpha1.ScyllaDBDatacenterGVK.Kind:
+		sdc, err := smtc.scyllaDBDatacenterLister.ScyllaDBDatacenters(obj.GetNamespace()).Get(controllerRef.Name)
 		if err != nil {
 			utilruntime.HandleError(err)
-			return false
+			return
 		}
 
-		return smcr.Name == smcrName
+		smtc.handlers.EnqueueAllFunc(smtc.enqueueThroughScyllaDBDatacenter(sdc))(depth+1, obj, op)
+		return
+
+	default:
+		// Nothing to do.
+		return
+
+	}
+}
+
+func (smtc *Controller) enqueueThroughScyllaDBDatacenter(sdc *scyllav1alpha1.ScyllaDBDatacenter) controllerhelpers.EnqueueFuncType {
+	return smtc.handlers.EnqueueAllFunc(smtc.handlers.EnqueueWithFilterFunc(func(smt *scyllav1alpha1.ScyllaDBManagerTask) bool {
+		switch smt.Spec.ScyllaDBClusterRef.Kind {
+		case scyllav1alpha1.ScyllaDBDatacenterGVK.Kind:
+			return smt.Spec.ScyllaDBClusterRef.Name == sdc.Name
+
+		default:
+			return false
+
+		}
 	}))
 }

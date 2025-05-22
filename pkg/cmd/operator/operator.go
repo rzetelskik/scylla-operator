@@ -705,7 +705,9 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		o.kubeClient,
 		o.scyllaClient.ScyllaV1alpha1(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBManagerTasks(),
-		scyllaInformers.Scylla().V1alpha1().ScyllaDBManagerClusterRegistrations(),
+		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
+		kubeInformers.Core().V1().Secrets(),
+		kubeInformers.Batch().V1().Jobs(),
 	)
 	if err != nil {
 		return fmt.Errorf("can't create ScyllaDBManagerTask controller: %w", err)
