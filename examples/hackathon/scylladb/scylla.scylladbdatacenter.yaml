@@ -1,0 +1,48 @@
+apiVersion: scylla.scylladb.com/v1alpha1
+kind: ScyllaDBDatacenter
+metadata:
+  name: scylla
+  annotations:
+    internal.scylla-operator.scylladb.com/sysctls: |
+      ["fs.aio-max-nr=30000000"]
+spec:
+  datacenterName: us-east-1
+  scyllaDB:
+    enableDeveloperMode: true
+    image: docker.io/scylladb/scylla:2025.1.2
+  scyllaDBManagerAgent:
+    image: docker.io/scylladb/scylla-manager-agent:3.6.0-dev-0.20250522.dbc9556f9
+  rackTemplate:
+    nodes: 3
+    scyllaDB:
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
+        requests:
+          cpu: 10m
+          memory: 100Mi
+      storage:
+        capacity: 1Gi
+        storageClassName: scylladb-local-xfs
+    scyllaDBManagerAgent:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 10M
+    placement:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: scylla.scylladb.com/node-type
+              operator: In
+              values:
+              - scylla
+      tolerations:
+      - effect: NoSchedule
+        key: scylla-operator.scylladb.com/dedicated
+        operator: Equal
+        value: scyllaclusters
+  racks:
+  - name: us-east-1a

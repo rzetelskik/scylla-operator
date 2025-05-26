@@ -1,0 +1,10 @@
+apiVersion: scylla.scylladb.com/v1alpha1
+kind: ScyllaDBManagerTask
+metadata:
+  name: repair
+spec:
+  scyllaDBClusterRef:
+    kind: ScyllaDBDatacenter
+    name: scylla
+  type: Repair
+  repair: {}
