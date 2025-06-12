@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc = controllerhelpers.DeletionHandlingObjectToNamespacedName
 )
 
 type hostID struct {
@@ -236,7 +236,7 @@ func (c *Controller) updateService(old, cur interface{}) {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldService, err))
 			return
 		}
-		c.deleteService(cache.DeletedFinalStateUnknown{
+		c.deleteService(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldService,
 		})
@@ -249,7 +249,7 @@ func (c *Controller) updateService(old, cur interface{}) {
 func (c *Controller) deleteService(obj interface{}) {
 	svc, ok := obj.(*corev1.Service)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		tombstone, ok := obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return

@@ -5,10 +5,12 @@ import (
 
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
 	"github.com/scylladb/scylla-operator/pkg/resource"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	apimachineryutilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -20,7 +22,37 @@ type InformerHandler struct {
 	Handler  cache.ResourceEventHandler
 }
 
-type KeyFuncType func(obj interface{}) (string, error)
+type KeyFuncType func(obj interface{}) (types.NamespacedName, error)
+
+func DeletionHandlingObjectToNamespacedName(obj interface{}) (types.NamespacedName, error) {
+	if d, ok := obj.(DeletedFinalStateUnknown); ok {
+		return d.Key, nil
+	}
+
+	namespacedName, err := ObjectToNamespacedName(obj)
+	if err != nil {
+		return types.NamespacedName{}, fmt.Errorf("can't convert object to namespaced name: %w", err)
+	}
+
+	return namespacedName, nil
+}
+
+func ObjectToNamespacedName(obj interface{}) (types.NamespacedName, error) {
+	metaAccessor, err := meta.Accessor(obj)
+	if err != nil {
+		return types.NamespacedName{}, fmt.Errorf("object has no meta: %w", err)
+	}
+
+	return types.NamespacedName{
+		Namespace: metaAccessor.GetNamespace(),
+		Name:      metaAccessor.GetName(),
+	}, nil
+}
+
+type DeletedFinalStateUnknown struct {
+	Key types.NamespacedName
+	Obj interface{}
+}
 
 type HandlerOperationType string
 
@@ -45,14 +77,14 @@ type EnqueueFuncType func(int, kubeinterfaces.ObjectInterface, HandlerOperationT
 type DeleteFuncType = func(any)
 
 type Handlers[T kubeinterfaces.ObjectInterface] struct {
-	queue        workqueue.RateLimitingInterface
+	queue        workqueue.TypedRateLimitingInterface[types.NamespacedName]
 	keyFunc      KeyFuncType
 	scheme       *runtime.Scheme
 	gvk          schema.GroupVersionKind
 	getterLister kubeinterfaces.GetterLister[T]
 }
 
-func NewHandlers[T kubeinterfaces.ObjectInterface](queue workqueue.RateLimitingInterface, keyFunc KeyFuncType, scheme *runtime.Scheme, gvk schema.GroupVersionKind, getterLister kubeinterfaces.GetterLister[T]) (*Handlers[T], error) {
+func NewHandlers[T kubeinterfaces.ObjectInterface](queue workqueue.TypedRateLimitingInterface[types.NamespacedName], keyFunc KeyFuncType, scheme *runtime.Scheme, gvk schema.GroupVersionKind, getterLister kubeinterfaces.GetterLister[T]) (*Handlers[T], error) {
 	return &Handlers[T]{
 		queue:        queue,
 		keyFunc:      keyFunc,
@@ -172,7 +204,7 @@ func (h *Handlers[QT]) HandleUpdateWithDepth(depth int, oldUntyped, curUntyped a
 		}
 
 		if deleteFunc != nil {
-			deleteFunc(cache.DeletedFinalStateUnknown{
+			deleteFunc(DeletedFinalStateUnknown{
 				Key: key,
 				Obj: old,
 			})
@@ -187,7 +219,7 @@ func (h *Handlers[QT]) HandleUpdate(old, cur any, enqueueFunc EnqueueFuncType, d
 }
 
 func (h *Handlers[T]) HandleDeleteWithDepth(depth int, obj any, enqueueFunc EnqueueFuncType) {
-	tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+	tombstone, ok := obj.(DeletedFinalStateUnknown)
 	if ok {
 		klog.V(5).InfoSDepth(depth, "Observed deletion", getObjectLogContext(tombstone.Obj.(kubeinterfaces.ObjectInterface), nil)...)
 		enqueueFunc(depth+1, tombstone.Obj.(kubeinterfaces.ObjectInterface), HandlerOperationTypeDelete)

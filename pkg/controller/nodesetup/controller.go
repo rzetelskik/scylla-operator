@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	keyFunc                 = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc                 = controllerhelpers.DeletionHandlingObjectToNamespacedName
 	nodeConfigControllerGVK = scyllav1alpha1.GroupVersion.WithKind("NodeConfig")
 )
 

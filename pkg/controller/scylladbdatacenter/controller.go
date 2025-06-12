@@ -53,7 +53,7 @@ const (
 )
 
 var (
-	keyFunc                  = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc                  = controllerhelpers.DeletionHandlingObjectToNamespacedName
 	statefulSetControllerGVK = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
 )
 

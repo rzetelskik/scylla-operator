@@ -54,7 +54,7 @@ const (
 )
 
 var (
-	keyFunc                    = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc                    = controllerhelpers.DeletionHandlingObjectToNamespacedName
 	scyllaClusterControllerGVK = scyllav1.GroupVersion.WithKind("ScyllaCluster")
 )
 

@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc = controllerhelpers.DeletionHandlingObjectToNamespacedName
 )
 
 // Controller watches all PVs actively belonging to a ScyllaDBDatacenter and replace scylla node
@@ -248,7 +248,7 @@ func (opc *Controller) updateNode(old, cur interface{}) {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldNode, err))
 			return
 		}
-		opc.deleteNode(cache.DeletedFinalStateUnknown{
+		opc.deleteNode(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldNode,
 		})
@@ -258,7 +258,7 @@ func (opc *Controller) updateNode(old, cur interface{}) {
 func (opc *Controller) deleteNode(obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		tombstone, ok := obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
@@ -292,7 +292,7 @@ func (opc *Controller) updateScyllaDBDatacenter(old, cur interface{}) {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldSDC, err))
 			return
 		}
-		opc.deleteScyllaDBDatacenter(cache.DeletedFinalStateUnknown{
+		opc.deleteScyllaDBDatacenter(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldSDC,
 		})
@@ -305,7 +305,7 @@ func (opc *Controller) updateScyllaDBDatacenter(old, cur interface{}) {
 func (opc *Controller) deleteScyllaDBDatacenter(obj interface{}) {
 	sdc, ok := obj.(*scyllav1alpha1.ScyllaDBDatacenter)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		tombstone, ok := obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return

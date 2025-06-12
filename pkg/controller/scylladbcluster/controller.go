@@ -42,7 +42,7 @@ const (
 )
 
 var (
-	keyFunc                      = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc                      = controllerhelpers.DeletionHandlingObjectToNamespacedName
 	scyllaDBClusterControllerGVK = scyllav1alpha1.GroupVersion.WithKind("ScyllaDBCluster")
 	remoteControllerGVK          = scyllav1alpha1.GroupVersion.WithKind("RemoteOwner")
 )

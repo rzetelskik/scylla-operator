@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	keyFunc                              = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc                              = controllerhelpers.DeletionHandlingObjectToNamespacedName
 	remoteKubernetesClusterControllerGVK = scyllav1alpha1.GroupVersion.WithKind("RemoteKubernetesCluster")
 )
 

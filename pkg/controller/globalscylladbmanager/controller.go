@@ -9,6 +9,7 @@ import (
 	scyllaclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
@@ -23,7 +24,7 @@ import (
 )
 
 var (
-	keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc = controllerhelpers.DeletionHandlingObjectToNamespacedName
 )
 
 type Controller struct {
@@ -124,7 +125,7 @@ func (gsmc *Controller) updateScyllaDBManagerClusterRegistration(old, cur interf
 			return
 		}
 
-		gsmc.deleteScyllaDBManagerClusterRegistration(cache.DeletedFinalStateUnknown{
+		gsmc.deleteScyllaDBManagerClusterRegistration(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldSMCR,
 		})
@@ -147,8 +148,8 @@ func (gsmc *Controller) updateScyllaDBManagerClusterRegistration(old, cur interf
 func (gsmc *Controller) deleteScyllaDBManagerClusterRegistration(obj interface{}) {
 	smcr, ok := obj.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)
 	if !ok {
-		var tombstone cache.DeletedFinalStateUnknown
-		tombstone, ok = obj.(cache.DeletedFinalStateUnknown)
+		var tombstone controllerhelpers.DeletedFinalStateUnknown
+		tombstone, ok = obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("can't get object from tombstone %#v", obj))
 			return
@@ -195,7 +196,7 @@ func (gsmc *Controller) updateScyllaDBDatacenter(old, cur interface{}) {
 			return
 		}
 
-		gsmc.deleteScyllaDBDatacenter(cache.DeletedFinalStateUnknown{
+		gsmc.deleteScyllaDBDatacenter(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldSDC,
 		})
@@ -213,8 +214,8 @@ func (gsmc *Controller) updateScyllaDBDatacenter(old, cur interface{}) {
 func (gsmc *Controller) deleteScyllaDBDatacenter(obj interface{}) {
 	sdc, ok := obj.(*scyllav1alpha1.ScyllaDBDatacenter)
 	if !ok {
-		var tombstone cache.DeletedFinalStateUnknown
-		tombstone, ok = obj.(cache.DeletedFinalStateUnknown)
+		var tombstone controllerhelpers.DeletedFinalStateUnknown
+		tombstone, ok = obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("can't get object from tombstone %#v", obj))
 			return
@@ -260,7 +261,7 @@ func (gsmc *Controller) updateNamespace(old, cur interface{}) {
 			return
 		}
 
-		gsmc.deleteNamespace(cache.DeletedFinalStateUnknown{
+		gsmc.deleteNamespace(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldNS,
 		})
@@ -282,8 +283,8 @@ func (gsmc *Controller) updateNamespace(old, cur interface{}) {
 func (gsmc *Controller) deleteNamespace(obj interface{}) {
 	ns, ok := obj.(*corev1.Namespace)
 	if !ok {
-		var tombstone cache.DeletedFinalStateUnknown
-		tombstone, ok = obj.(cache.DeletedFinalStateUnknown)
+		var tombstone controllerhelpers.DeletedFinalStateUnknown
+		tombstone, ok = obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("can't get object from tombstone %#v", obj))
 			return

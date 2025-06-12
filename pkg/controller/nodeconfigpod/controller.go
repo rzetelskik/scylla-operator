@@ -40,7 +40,7 @@ const (
 )
 
 var (
-	keyFunc          = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc          = controllerhelpers.DeletionHandlingObjectToNamespacedName
 	podControllerGVK = corev1.SchemeGroupVersion.WithKind("Pod")
 )
 

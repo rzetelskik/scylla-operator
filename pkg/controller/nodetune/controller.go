@@ -12,6 +12,7 @@ import (
 	scyllaclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/cri"
 	"github.com/scylladb/scylla-operator/pkg/kubelet"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -48,7 +49,7 @@ const (
 
 var (
 	controllerKey = "key"
-	keyFunc       = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc       = controllerhelpers.DeletionHandlingObjectToNamespacedName
 
 	nodeConfigGVK          = scyllav1alpha1.GroupVersion.WithKind("NodeConfig")
 	daemonSetControllerGVK = appsv1.SchemeGroupVersion.WithKind("DaemonSet")
@@ -245,7 +246,7 @@ func (ncdc *Controller) updateNodeConfig(old, cur interface{}) {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldNC, err))
 			return
 		}
-		ncdc.deleteNodeConfig(cache.DeletedFinalStateUnknown{
+		ncdc.deleteNodeConfig(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldNC,
 		})
@@ -269,7 +270,7 @@ func (ncdc *Controller) updateNodeConfig(old, cur interface{}) {
 func (ncdc *Controller) deleteNodeConfig(obj interface{}) {
 	nc, ok := obj.(*scyllav1alpha1.NodeConfig)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		tombstone, ok := obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
@@ -351,7 +352,7 @@ func (ncdc *Controller) updateJob(old, cur interface{}) {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", oldJob, err))
 			return
 		}
-		ncdc.deleteJob(cache.DeletedFinalStateUnknown{
+		ncdc.deleteJob(controllerhelpers.DeletedFinalStateUnknown{
 			Key: key,
 			Obj: oldJob,
 		})
@@ -380,7 +381,7 @@ func (ncdc *Controller) updateJob(old, cur interface{}) {
 func (ncdc *Controller) deleteJob(obj interface{}) {
 	job, ok := obj.(*batchv1.Job)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		tombstone, ok := obj.(controllerhelpers.DeletedFinalStateUnknown)
 		if !ok {
 			apimachineryutilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
