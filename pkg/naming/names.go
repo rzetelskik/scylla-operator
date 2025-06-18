@@ -59,6 +59,10 @@ func AgentAuthTokenSecretNameForScyllaCluster(sc *scyllav1.ScyllaCluster) string
 	})
 }
 
+func AgentAuthTokenSecretNameForScyllaDBCluster(sc *scyllav1alpha1.ScyllaDBCluster) string {
+	return fmt.Sprintf("%s-auth-token", sc.Name)
+}
+
 func MemberServiceName(r scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.ScyllaDBDatacenter, idx int) string {
 	return fmt.Sprintf("%s-%d", StatefulSetNameForRack(r, sdc), idx)
 }
@@ -289,6 +293,10 @@ func GenerateNameHash(parts ...string) (string, error) {
 
 func ScyllaDBManagerClusterRegistrationNameForScyllaDBDatacenter(sdc *scyllav1alpha1.ScyllaDBDatacenter) (string, error) {
 	return scyllaDBManagerClusterRegistrationName(scyllav1alpha1.ScyllaDBDatacenterGVK.Kind, sdc.Name)
+}
+
+func ScyllaDBManagerClusterRegistrationNameForScyllaDBCluster(sc *scyllav1alpha1.ScyllaDBCluster) (string, error) {
+	return scyllaDBManagerClusterRegistrationName(scyllav1alpha1.ScyllaDBClusterGVK.Kind, sc.Name)
 }
 
 func ScyllaDBManagerClusterRegistrationNameForScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask) (string, error) {

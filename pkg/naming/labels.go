@@ -129,6 +129,9 @@ func ScyllaDBClusterDatacenterAnnotations(sc *scyllav1alpha1.ScyllaDBCluster, dc
 	if dc.Metadata != nil {
 		maps.Copy(dcAnnotations, dc.Metadata.Annotations)
 	}
+
+	dcAnnotations[ScyllaDBManagerAgentAuthTokenOverrideSecretRefAnnotation] = AgentAuthTokenSecretNameForScyllaDBCluster(sc)
+
 	return dcAnnotations
 }
 
@@ -147,7 +150,7 @@ func ScyllaDBClusterSelector(sc *scyllav1alpha1.ScyllaDBCluster) labels.Selector
 	return labels.SelectorFromSet(ScyllaDBClusterSelectorLabels(sc))
 }
 
-func ScyllaDBClusterDatacenterEndpointsLabels(sc *scyllav1alpha1.ScyllaDBCluster, dc *scyllav1alpha1.ScyllaDBClusterDatacenter, managingClusterDomain string) map[string]string {
+func ScyllaDBClusterDatacenterRemoteEndpointsLabels(sc *scyllav1alpha1.ScyllaDBCluster, dc *scyllav1alpha1.ScyllaDBClusterDatacenter, managingClusterDomain string) map[string]string {
 	dcLabels := make(map[string]string)
 	if sc.Spec.Metadata != nil {
 		maps.Copy(dcLabels, sc.Spec.Metadata.Labels)
@@ -157,16 +160,27 @@ func ScyllaDBClusterDatacenterEndpointsLabels(sc *scyllav1alpha1.ScyllaDBCluster
 		maps.Copy(dcLabels, dc.Metadata.Labels)
 	}
 	maps.Copy(dcLabels, RemoteManagedResourcesLabels(managingClusterDomain))
-	maps.Copy(dcLabels, ScyllaDBClusterEndpointsSelectorLabels(sc))
+	maps.Copy(dcLabels, ScyllaDBClusterRemoteEndpointsSelectorLabels(sc))
 	dcLabels[ParentClusterDatacenterNameLabel] = dc.Name
 	return dcLabels
 }
 
-func ScyllaDBClusterEndpointsSelectorLabels(sc *scyllav1alpha1.ScyllaDBCluster) map[string]string {
+func ScyllaDBClusterRemoteEndpointsSelectorLabels(sc *scyllav1alpha1.ScyllaDBCluster) map[string]string {
 	scSelectorLabels := ScyllaDBClusterSelectorLabels(sc)
-	scSelectorLabels[ClusterEndpointsLabel] = sc.Name
+	scSelectorLabels[RemoteClusterEndpointsLabel] = sc.Name
 
 	return scSelectorLabels
+}
+
+func ScyllaDBClusterRemoteEndpointsSelector(sc *scyllav1alpha1.ScyllaDBCluster) labels.Selector {
+	return labels.SelectorFromSet(ScyllaDBClusterRemoteEndpointsSelectorLabels(sc))
+}
+
+func ScyllaDBClusterEndpointsSelectorLabels(sc *scyllav1alpha1.ScyllaDBCluster) map[string]string {
+	selectorLabels := ScyllaDBClusterSelectorLabels(sc)
+	selectorLabels[ClusterEndpointsLabel] = sc.Name
+
+	return selectorLabels
 }
 
 func ScyllaDBClusterEndpointsSelector(sc *scyllav1alpha1.ScyllaDBCluster) labels.Selector {
