@@ -33,7 +33,20 @@ if [[ "${SO_DISABLE_NODECONFIG:-false}" == "true" ]]; then
 fi
 
 for i in "${!KUBECONFIGS[@]}"; do
-  KUBECONFIG="${KUBECONFIGS[$i]}" DEPLOY_DIR="${ARTIFACTS}/deploy/${i}" timeout --foreground -v 10m "${parent_dir}/../ci-deploy.sh" "${SO_IMAGE}" &
+  KUBECONFIG="${KUBECONFIGS[$i]}"
+  export KUBECONFIG
+  DEPLOY_DIR="${ARTIFACTS}/deploy/${i}"
+  export DEPLOY_DIR
+
+  # TODO: use separate flags for control-plane and worker clusters. We shouldn't assume that the first cluster becomes the control plane.
+  # Only deploy ScyllaDB Manager in the control plane cluster.
+  SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT="false"
+  if [[ "${i}" -ne 0 ]]; then
+    SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT="true"
+  fi
+  export SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT
+
+  timeout --foreground -v 10m "${parent_dir}/../ci-deploy.sh" "${SO_IMAGE}" &
   ci_deploy_bg_pids["${i}"]=$!
 done
 
