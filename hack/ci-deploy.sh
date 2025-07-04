@@ -29,11 +29,6 @@ SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT=${SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT:
 
 mkdir -p "${ARTIFACTS_DEPLOY_DIR}/"{operator,prometheus-operator,haproxy-ingress}
 
-if [[ "${SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT}" != "true" ]]; then
-  mkdir -p "${ARTIFACTS_DEPLOY_DIR}/manager"
-  cp ./deploy/manager/dev/*.yaml "${ARTIFACTS_DEPLOY_DIR}/manager"
-fi
-
 cp ./deploy/operator/*.yaml "${ARTIFACTS_DEPLOY_DIR}/operator"
 cp ./examples/third-party/prometheus-operator/*.yaml "${ARTIFACTS_DEPLOY_DIR}/prometheus-operator"
 cp ./examples/third-party/haproxy-ingress/*.yaml "${ARTIFACTS_DEPLOY_DIR}/haproxy-ingress"
@@ -116,6 +111,9 @@ else
 fi
 
 if [[ "${SO_DISABLE_SCYLLADB_MANAGER_DEPLOYMENT}" != "true" ]]; then
+  mkdir -p "${ARTIFACTS_DEPLOY_DIR}/manager"
+  cp ./deploy/manager/dev/*.yaml "${ARTIFACTS_DEPLOY_DIR}/manager"
+
   if [[ -n "${SO_SCYLLACLUSTER_STORAGECLASS_NAME:-}" ]]; then
     yq e --inplace '.spec.datacenter.racks[0].storage.storageClassName = env(SO_SCYLLACLUSTER_STORAGECLASS_NAME)' "${ARTIFACTS_DEPLOY_DIR}/manager/50_scyllacluster.yaml"
   elif [[ -n "${SO_SCYLLACLUSTER_STORAGECLASS_NAME+x}" ]]; then
