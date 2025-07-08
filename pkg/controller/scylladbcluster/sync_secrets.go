@@ -68,3 +68,71 @@ func (scc *Controller) syncRemoteSecrets(
 
 	return progressingConditions, nil
 }
+
+func (scc *Controller) syncLocalSecrets(
+	ctx context.Context,
+	sc *scyllav1alpha1.ScyllaDBCluster,
+	localSecrets map[string]*corev1.Secret,
+) ([]metav1.Condition, error) {
+	getScyllaDBManagerAgentAuthTokenConfigOptions := controllerhelpers.GetScyllaDBManagerAgentAuthTokenConfigOptions{
+		GetOptionalCustomAgentConfigSecret: func() ([]metav1.Condition, *corev1.Secret, error) {
+			// We do not take custom agent config into account on ScyllaDBCluster level, as the secrets are propagated to ScyllaDBDatacenters.
+			return nil, nil, nil
+		},
+		GetOptionalExistingAuthTokenSecret: func() ([]metav1.Condition, *corev1.Secret, error) {
+			secret, err := getOptionalExistingScyllaDBManagerAuthTokenSecret(sc, localSecrets)
+			return nil, secret, err
+		},
+		ContinueOnCustomAgentConfigError: false,
+	}
+	progressingConditions, scyllaDBManagerAgentAuthTokenConfig, err := controllerhelpers.GetScyllaDBManagerAgentAuthTokenConfig(getScyllaDBManagerAgentAuthTokenConfigOptions)
+	if err != nil {
+		return progressingConditions, fmt.Errorf("can't get ScyllaDB Manager agent auth token config: %w", err)
+	}
+	if len(progressingConditions) > 0 {
+		return progressingConditions, nil
+	}
+
+	requiredSecrets, err := makeLocalSecrets(sc, scyllaDBManagerAgentAuthTokenConfig)
+	if err != nil {
+		return progressingConditions, fmt.Errorf("can't make local secrets: %w", err)
+	}
+
+	err = controllerhelpers.Prune(ctx,
+		requiredSecrets,
+		localSecrets,
+		&controllerhelpers.PruneControlFuncs{
+			DeleteFunc: scc.kubeClient.CoreV1().Secrets(sc.Namespace).Delete,
+		},
+		scc.eventRecorder,
+	)
+	if err != nil {
+		return progressingConditions, fmt.Errorf("can't prune secret(s) of %q ScyllaDBCluster: %w", naming.ObjRef(sc), err)
+	}
+
+	for _, s := range requiredSecrets {
+		_, changed, err := resourceapply.ApplySecret(ctx, scc.kubeClient.CoreV1(), scc.secretLister, scc.eventRecorder, s, resourceapply.ApplyOptions{})
+		if changed {
+			controllerhelpers.AddGenericProgressingStatusCondition(&progressingConditions, secretControllerProgressingCondition, s, "apply", sc.Generation)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("can't apply secret: %w", err)
+		}
+	}
+
+	return progressingConditions, nil
+}
+
+func getOptionalExistingScyllaDBManagerAuthTokenSecret(sc *scyllav1alpha1.ScyllaDBCluster, localSecrets map[string]*corev1.Secret) (*corev1.Secret, error) {
+	agentAuthTokenSecretName, err := naming.ScyllaDBManagerAgentAuthTokenSecretNameForScyllaDBCluster(sc)
+	if err != nil {
+		return nil, fmt.Errorf("can't get agent auth token secret name for ScyllaDBCluster %q: %w", naming.ObjRef(sc), err)
+	}
+
+	agentAuthTokenSecret, ok := localSecrets[agentAuthTokenSecretName]
+	if !ok {
+		return nil, nil
+	}
+
+	return agentAuthTokenSecret, nil
+}
