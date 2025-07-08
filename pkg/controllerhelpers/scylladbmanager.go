@@ -11,7 +11,10 @@ import (
 	"github.com/scylladb/scylla-manager/v3/pkg/managerclient"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	apimachineryutilrand "k8s.io/apimachinery/pkg/util/rand"
 )
 
 func GetScyllaDBManagerClient(_ context.Context, _ *scyllav1alpha1.ScyllaDBManagerClusterRegistration) (*managerclient.Client, error) {
@@ -33,4 +36,62 @@ func GetScyllaDBManagerClient(_ context.Context, _ *scyllav1alpha1.ScyllaDBManag
 
 func IsManagedByGlobalScyllaDBManagerInstance(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) bool {
 	return naming.GlobalScyllaDBManagerClusterRegistrationSelector().Matches(labels.Set(smcr.GetLabels()))
+}
+
+const (
+	authTokenSize = 128
+)
+
+func newScyllaDBManagerAuthToken() string {
+	return apimachineryutilrand.String(authTokenSize)
+}
+
+type ScyllaDBManagerAuthTokenSource struct {
+	GetOptionalAuthTokenSecret func() ([]metav1.Condition, *corev1.Secret, error)
+	ExtractAuthTokenFromSecret func(*corev1.Secret) (string, error)
+}
+
+func GetScyllaDBManagerAgentAuthToken(
+	authTokenSources []ScyllaDBManagerAuthTokenSource,
+) ([]metav1.Condition, string, error) {
+	return getScyllaDBManagerAgentAuthToken(
+		newScyllaDBManagerAuthToken,
+		authTokenSources,
+	)
+}
+
+func getScyllaDBManagerAgentAuthToken(
+	generateAuthToken func() string,
+	authTokenSources []ScyllaDBManagerAuthTokenSource,
+) ([]metav1.Condition, string, error) {
+	var progressingConditions []metav1.Condition
+
+	for _, source := range authTokenSources {
+		secretProgressingConditions, secret, err := source.GetOptionalAuthTokenSecret()
+		progressingConditions = append(progressingConditions, secretProgressingConditions...)
+		if err != nil {
+			return progressingConditions, "", fmt.Errorf("can't get ScyllaDB Manager agent auth token: %w", err)
+		}
+		if len(progressingConditions) > 0 {
+			return progressingConditions, "", nil
+		}
+		if secret == nil {
+			continue
+		}
+
+		authToken, err := source.ExtractAuthTokenFromSecret(secret)
+		if err != nil {
+			return progressingConditions, "", fmt.Errorf("can't extract auth token from secret %q: %w", naming.ObjRef(secret), err)
+		}
+		if len(authToken) == 0 {
+			continue
+		}
+
+		// Return early if any of the sources provided an auth token.
+		return progressingConditions, authToken, nil
+	}
+
+	// Generate a new auth token if no source provided one.
+	authToken := generateAuthToken()
+	return progressingConditions, authToken, nil
 }
