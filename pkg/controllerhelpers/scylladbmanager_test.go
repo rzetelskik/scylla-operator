@@ -30,9 +30,9 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 
 	newDefaultOptions := func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 		return GetScyllaDBManagerAgentAuthTokenConfigOptions{
-			GetOptionalCustomAgentConfigSecret: getNilSecret,
-			GetOptionalExistingAuthTokenSecret: getNilSecret,
-			ContinueOnCustomAgentConfigError:   false,
+			GetOptionalAgentAuthTokenFromCustomConfig: getNilSecret,
+			GetOptionalAgentAuthTokenFromExisting:     getNilSecret,
+			ContinueOnCustomAgentConfigError:          false,
 		}
 	}
 
@@ -57,7 +57,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "custom-agent-config",
@@ -81,7 +81,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return []metav1.Condition{
 						{
 							Type:               "SecretControllerProgressing",
@@ -113,7 +113,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
 
@@ -129,7 +129,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
 				opts.ContinueOnCustomAgentConfigError = true
@@ -146,7 +146,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "custom-agent-config",
@@ -170,7 +170,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "custom-agent-config",
@@ -195,7 +195,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",
@@ -219,7 +219,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return []metav1.Condition{
 						{
 							Type:               "SecretControllerProgressing",
@@ -251,7 +251,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get existing auth token secret")
 				}
 
@@ -267,7 +267,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",
@@ -291,7 +291,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "custom-agent-config",
@@ -302,7 +302,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 						},
 					}, nil
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",
@@ -326,7 +326,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return []metav1.Condition{
 						{
 							Type:               "SecretControllerProgressing",
@@ -337,7 +337,7 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 						},
 					}, nil, nil
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",
@@ -369,10 +369,10 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",
@@ -396,10 +396,10 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",
@@ -424,10 +424,10 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return []metav1.Condition{
 						{
 							Type:               "SecretControllerProgressing",
@@ -460,10 +460,10 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get existing auth token secret")
 				}
 				opts.ContinueOnCustomAgentConfigError = true
@@ -481,10 +481,10 @@ func Test_getScyllaDBManagerAgentAuthTokenConfig(t *testing.T) {
 			options: func() GetScyllaDBManagerAgentAuthTokenConfigOptions {
 				opts := newDefaultOptions()
 
-				opts.GetOptionalCustomAgentConfigSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromCustomConfig = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, nil, errors.New("can't get custom agent config secret")
 				}
-				opts.GetOptionalExistingAuthTokenSecret = func() ([]metav1.Condition, *corev1.Secret, error) {
+				opts.GetOptionalAgentAuthTokenFromExisting = func() ([]metav1.Condition, *corev1.Secret, error) {
 					return nil, &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "existing-auth-token",

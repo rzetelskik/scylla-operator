@@ -4,7 +4,6 @@ package controllerhelpers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -60,12 +59,8 @@ var _ error = (*ScyllaDBManagerAgentCustomConfigError)(nil)
 
 // GetScyllaDBManagerAgentAuthTokenConfigOptions defines options for selecting ScyllaDB Manager agent auth token config.
 type GetScyllaDBManagerAgentAuthTokenConfigOptions struct {
-	GetOptionalCustomAgentConfigSecret func() ([]metav1.Condition, *corev1.Secret, error)
-	GetOptionalExistingAuthTokenSecret func() ([]metav1.Condition, *corev1.Secret, error)
-	// ContinueOnCustomAgentConfigError allows the controller to continue on an error coming from GetOptionalCustomAgentConfigSecret func or extracting the auth token from the custom agent config secret.
-	// This is provided for backwards compatibility, so that a misconfigured or missing custom agent config does not block the controller from creating the auth token secret.
-	// Its use in new applications is discouraged, as it leads to confusing behavior.
-	ContinueOnCustomAgentConfigError bool
+	GetOptionalAgentAuthTokenFromCustomConfig func(func(*corev1.Secret) (string, error)) ([]metav1.Condition, string, error)
+	GetOptionalAgentAuthTokenFromExisting     func(func(*corev1.Secret) (string, error)) ([]metav1.Condition, string, error)
 }
 
 func GetScyllaDBManagerAgentAuthTokenConfig(
@@ -83,77 +78,51 @@ func getScyllaDBManagerAgentAuthTokenConfig(
 	generateAuthToken func() string,
 	options GetScyllaDBManagerAgentAuthTokenConfigOptions,
 ) ([]metav1.Condition, []byte, error) {
-	var customConfigError error
-
 	progressingConditions, authToken, err := getScyllaDBManagerAgentAuthToken(
 		generateAuthToken,
 		options,
 	)
 	if err != nil {
-		err = fmt.Errorf("can't get ScyllaDB Manager agent auth token: %w", err)
-		if !options.ContinueOnCustomAgentConfigError || !errors.As(err, &ScyllaDBManagerAgentCustomConfigError{}) {
-			return progressingConditions, nil, err
-		}
-
-		customConfigError = err
+		return progressingConditions, nil, fmt.Errorf("can't get ScyllaDB Manager agent auth token: %w", err)
 	}
 	if len(progressingConditions) > 0 {
-		return progressingConditions, nil, customConfigError
+		return progressingConditions, nil, nil
 	}
 
 	authTokenConfig, err := helpers.GetAgentAuthTokenConfig(authToken)
 	if err != nil {
 		return nil, nil, fmt.Errorf("can't get ScyllaDB Manager agent auth token config: %w", err)
 	}
-	return nil, authTokenConfig, customConfigError
+	return nil, authTokenConfig, nil
 }
 
 func getScyllaDBManagerAgentAuthToken(
 	generateAuthToken func() string,
 	options GetScyllaDBManagerAgentAuthTokenConfigOptions,
 ) ([]metav1.Condition, string, error) {
-	var customConfigError error
-
 	// User-defined config should take precedence over the operator-generated tokens.
-	progressingConditions, authToken, err := getScyllaDBManagerAgentAuthTokenFromAgentConfigSecret(options.GetOptionalCustomAgentConfigSecret)
+	progressingConditions, authToken, err := options.GetOptionalAgentAuthTokenFromCustomConfig(helpers.GetAgentAuthTokenFromAgentConfigSecret)
 	if err != nil {
-		customConfigError = NewScyllaDBManagerAgentCustomConfigError(fmt.Errorf("can't get ScyllaDB Manager agent auth token from custom config secret: %w", err))
-
-		// For backward compatibility, provide an option to continue on a custom agent config error.
-		if !options.ContinueOnCustomAgentConfigError {
-			return progressingConditions, "", customConfigError
-		}
+		return progressingConditions, "", fmt.Errorf("can't get ScyllaDB Manager agent auth token from custom config secret: %w", err)
 	}
 	if len(progressingConditions) > 0 || len(authToken) > 0 {
-		return progressingConditions, authToken, customConfigError
+		return progressingConditions, authToken, nil
 	}
 
 	// Try to retain the existing auth token if it exists.
-	progressingConditions, authToken, err = getScyllaDBManagerAgentAuthTokenFromExistingSecret(options.GetOptionalExistingAuthTokenSecret)
+	progressingConditions, authToken, err = options.GetOptionalAgentAuthTokenFromExisting(helpers.GetAgentAuthTokenFromSecret)
 	if err != nil {
 		return progressingConditions, "", fmt.Errorf("can't get ScyllaDB Manager agent auth token from existing secret: %w", err)
 	}
 	if len(progressingConditions) > 0 || len(authToken) > 0 {
-		return progressingConditions, authToken, customConfigError
+		return progressingConditions, authToken, nil
 	}
 
 	// Generate a new auth token.
-	return nil, generateAuthToken(), customConfigError
+	return nil, generateAuthToken(), nil
 }
 
-func getScyllaDBManagerAgentAuthTokenFromAgentConfigSecret(
-	getOptionalCustomAgentConfigSecret func() ([]metav1.Condition, *corev1.Secret, error),
-) ([]metav1.Condition, string, error) {
-	return getScyllaDBManagerAgentAuthTokenFromSecret(getOptionalCustomAgentConfigSecret, helpers.GetAgentAuthTokenFromAgentConfigSecret)
-}
-
-func getScyllaDBManagerAgentAuthTokenFromExistingSecret(
-	getOptionalExistingAuthTokenSecret func() ([]metav1.Condition, *corev1.Secret, error),
-) ([]metav1.Condition, string, error) {
-	return getScyllaDBManagerAgentAuthTokenFromSecret(getOptionalExistingAuthTokenSecret, helpers.GetAgentAuthTokenFromSecret)
-}
-
-func getScyllaDBManagerAgentAuthTokenFromSecret(
+func GetScyllaDBManagerAgentAuthTokenFromSecret(
 	getOptionalAuthTokenSecret func() ([]metav1.Condition, *corev1.Secret, error),
 	extractAuthTokenFromSecret func(secret *corev1.Secret) (string, error),
 ) ([]metav1.Condition, string, error) {

@@ -75,11 +75,11 @@ func (scc *Controller) syncLocalSecrets(
 	localSecrets map[string]*corev1.Secret,
 ) ([]metav1.Condition, error) {
 	getScyllaDBManagerAgentAuthTokenConfigOptions := controllerhelpers.GetScyllaDBManagerAgentAuthTokenConfigOptions{
-		GetOptionalCustomAgentConfigSecret: func() ([]metav1.Condition, *corev1.Secret, error) {
+		GetOptionalAgentAuthTokenFromCustomConfig: func() ([]metav1.Condition, *corev1.Secret, error) {
 			// We do not take custom agent config into account on ScyllaDBCluster level, as the secrets are propagated to ScyllaDBDatacenters.
 			return nil, nil, nil
 		},
-		GetOptionalExistingAuthTokenSecret: func() ([]metav1.Condition, *corev1.Secret, error) {
+		GetOptionalAgentAuthTokenFromExisting: func() ([]metav1.Condition, *corev1.Secret, error) {
 			secret, err := getOptionalExistingScyllaDBManagerAuthTokenSecret(sc, localSecrets)
 			return nil, secret, err
 		},
