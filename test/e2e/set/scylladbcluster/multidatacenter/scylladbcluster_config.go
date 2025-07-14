@@ -86,7 +86,7 @@ var _ = g.Describe("Multi datacenter ScyllaDBCluster", framework.MultiDatacenter
 		const scyllaDBManagerAgentRackAuthToken = "eeee"
 		scyllaDBManagerAgentDatacenterRackSecret := makeScyllaDBManagerAgentSecret("rack", scyllaDBManagerAgentRackAuthToken)
 
-		scyllaDBManagerAgentSecrets := []*corev1.Secret{
+		userManagedScyllaDBManagerAgentSecrets := []*corev1.Secret{
 			scyllaDBManagerAgentDatacenterTemplateSecret,
 			scyllaDBManagerAgentDatacenterTemplateRackTemplateSecret,
 			scyllaDBManagerAgentDatacenterRackTemplateSecret,
@@ -99,7 +99,7 @@ var _ = g.Describe("Multi datacenter ScyllaDBCluster", framework.MultiDatacenter
 			o.Expect(err).NotTo(o.HaveOccurred())
 		}
 
-		for _, secret := range scyllaDBManagerAgentSecrets {
+		for _, secret := range userManagedScyllaDBManagerAgentSecrets {
 			_, err := userClient.KubeClient().CoreV1().Secrets(secret.Namespace).Create(ctx, secret, metav1.CreateOptions{})
 			o.Expect(err).NotTo(o.HaveOccurred())
 		}
@@ -163,6 +163,23 @@ var _ = g.Describe("Multi datacenter ScyllaDBCluster", framework.MultiDatacenter
 		scylladbclusterverification.Verify(ctx, sc, rkcClusterMap)
 		err = scylladbclusterverification.WaitForFullQuorum(ctx, rkcClusterMap, sc)
 		o.Expect(err).NotTo(o.HaveOccurred())
+
+		framework.By("Collecting operator-managed ConfigMaps and Secrets which should be mirrored into remote datacenters")
+		var operatorManagedScyllaDBManagerAgentSecrets []*corev1.Secret
+
+		scyllaDBManagerAgentAuthTokenSecretName, err := naming.ScyllaDBManagerAgentAuthTokenSecretNameForScyllaDBCluster(sc)
+		o.Expect(err).NotTo(o.HaveOccurred())
+
+		operatorManagedScyllaDBManagerAgentSecrets = append(operatorManagedScyllaDBManagerAgentSecrets, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      scyllaDBManagerAgentAuthTokenSecretName,
+				Namespace: sc.Namespace,
+			},
+		})
+
+		var scyllaDBManagerAgentSecrets []*corev1.Secret
+		scyllaDBManagerAgentSecrets = append(scyllaDBManagerAgentSecrets, userManagedScyllaDBManagerAgentSecrets...)
+		scyllaDBManagerAgentSecrets = append(scyllaDBManagerAgentSecrets, operatorManagedScyllaDBManagerAgentSecrets...)
 
 		for _, dc := range sc.Spec.Datacenters {
 			framework.By("Verifying if ConfigMaps and Secrets referenced by ScyllaDBCluster %q are mirrored in %q Datacenter", sc.Name, dc.Name)
