@@ -33,7 +33,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-var _ = g.Describe("ScyllaDBManagerTask integration with global ScyllaDB Manager", func() {
+var _ = g.Describe("ScyllaDBManagerTask and ScyllaDBDatacenter integration with global ScyllaDB Manager", func() {
 	f := framework.NewFramework("scylladbmanagertask")
 
 	type entry struct {
@@ -42,7 +42,7 @@ var _ = g.Describe("ScyllaDBManagerTask integration with global ScyllaDB Manager
 		postSchemaRestoreHook      func(context.Context, string, framework.Client, *scyllav1alpha1.ScyllaDBDatacenter)
 	}
 
-	g.DescribeTable("should synchronise a backup task for ScyllaDBDatacenter and support a manual restore procedure", func(ctx g.SpecContext, e entry) {
+	g.DescribeTable("should synchronise a backup task and support a manual restore procedure", func(ctx g.SpecContext, e entry) {
 		ns, nsClient, ok := f.DefaultNamespaceIfAny()
 		o.Expect(ok).To(o.BeTrue())
 

@@ -26,10 +26,10 @@ import (
 	apimachineryutilwait "k8s.io/apimachinery/pkg/util/wait"
 )
 
-var _ = g.Describe("ScyllaDBManagerTask integration with global ScyllaDB Manager", func() {
+var _ = g.Describe("ScyllaDBManagerTask and ScyllaDBDatacenter integration with global ScyllaDB Manager", func() {
 	f := framework.NewFramework("scylladbmanagertask")
 
-	g.It("should synchronise a repair task for ScyllaDBDatacenter", func(ctx g.SpecContext) {
+	g.It("should synchronise a repair task", func(ctx g.SpecContext) {
 		ns, nsClient, ok := f.DefaultNamespaceIfAny()
 		o.Expect(ok).To(o.BeTrue())
 
