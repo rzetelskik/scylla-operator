@@ -14,6 +14,7 @@ import (
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
 	configassests "github.com/scylladb/scylla-operator/assets/config"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/internalapi"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -27,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 const (
@@ -120,10 +122,11 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		o.Expect(jobNodeNames).To(o.BeEquivalentTo(matchingNodeNames))
 	})
 
-	g.It("should set Scylla process nofile rlimit to maximum", func(ctx g.SpecContext) {
+	g.FIt("should set Scylla process nofile rlimit to maximum", func(ctx g.SpecContext) {
 		const (
-			nrOpenVar   = "fs.nr_open"
-			nrOpenLimit = "12345678"
+			nrOpenVar          = "fs.nr_open"
+			nrOpenLimit        = "12345678"
+			updatedNROpenLimit = "87654321"
 		)
 
 		nc := ncTemplate.DeepCopy()
@@ -170,37 +173,31 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		scyllaclusterverification.Verify(ctx, f.KubeClient(), f.ScyllaClient(), sc)
+		validateScyllaDBProcessNofileRLimit(ctx, f.KubeAdminClient().CoreV1().Pods(f.Namespace()), sc, nrOpenLimit)
 
-		podName := fmt.Sprintf("%s-%d", naming.StatefulSetNameForRackForScyllaCluster(sc.Spec.Datacenter.Racks[0], sc), 0)
-		for _, rlimit := range []string{"SOFT", "HARD"} {
-			framework.By("Validating %s file limit of Scylla process", rlimit)
-
-			ec := &corev1.EphemeralContainer{
-				TargetContainerName: naming.ScyllaContainerName,
-				EphemeralContainerCommon: corev1.EphemeralContainerCommon{
-					Name:            fmt.Sprintf("e2e-prlimits-%s", strings.ToLower(rlimit)),
-					Image:           configassests.Project.OperatorTests.NodeSetupImage,
-					ImagePullPolicy: corev1.PullIfNotPresent,
-					Command:         []string{"bash"},
-					Args: []string{
-						"-euEo",
-						"pipefail",
-						"-O",
-						"inherit_errexit",
-						"-c",
-						fmt.Sprintf(`prlimit --pid=$(pidof scylla) --nofile --noheadings --output=%s`, rlimit),
-					},
-				},
-			}
-
-			pod, ecLogs, err := utils.RunEphemeralContainerAndCollectLogs(ctx, f.KubeAdminClient().CoreV1().Pods(sc.Namespace), podName, ec)
-			o.Expect(err).NotTo(o.HaveOccurred())
-			ephemeralContainerState := controllerhelpers.FindContainerStatus(pod, ec.Name)
-			o.Expect(ephemeralContainerState).NotTo(o.BeNil())
-			o.Expect(ephemeralContainerState.State.Terminated).NotTo(o.BeNil())
-			o.Expect(ephemeralContainerState.State.Terminated.ExitCode).To(o.BeEquivalentTo(0))
-			o.Expect(strings.TrimSpace(string(ecLogs))).To(o.Equal(nrOpenLimit))
+		framework.By("Updating the NodeConfig to change fs.nr_open sysctl")
+		ncCopy := nc.DeepCopy()
+		ncCopy.Spec.Sysctls = []corev1.Sysctl{
+			{
+				Name:  nrOpenVar,
+				Value: updatedNROpenLimit,
+			},
 		}
+
+		patch, err := controllerhelpers.GenerateMergePatch(nc, ncCopy)
+		o.Expect(err).NotTo(o.HaveOccurred())
+		framework.By("Updating the NodeConfig to change fs.nr_open sysctl")
+		nc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(ctx, nc.Name, types.MergePatchType, patch, metav1.PatchOptions{})
+		o.Expect(err).NotTo(o.HaveOccurred())
+
+		framework.By("Waiting for NodeConfig to roll out (RV=%s)", nc.ResourceVersion)
+		postUpdateNodeConfigRolloutCtx, postUpdateNodeConfigRolloutCtxCancel := context.WithTimeout(ctx, nodeConfigRolloutTimeout)
+		defer postUpdateNodeConfigRolloutCtxCancel()
+		nc, err = controllerhelpers.WaitForNodeConfigState(postUpdateNodeConfigRolloutCtx, f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs(), nc.Name, controllerhelpers.WaitForStateOptions{TolerateDelete: false}, utils.IsNodeConfigRolledOut)
+		o.Expect(err).NotTo(o.HaveOccurred())
+
+		framework.By("Verifying ScyllaDB process nofile rlimit is updated")
+		validateScyllaDBProcessNofileRLimit(ctx, f.KubeAdminClient().CoreV1().Pods(f.Namespace()), sc, updatedNROpenLimit)
 	})
 
 	g.It("should correctly project state for each scylla pod", func() {
@@ -539,3 +536,40 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 		o.Expect(strings.TrimSpace(stdout)).To(o.Equal(fsAioMaxNrTargetValue))
 	})
 })
+
+func validateScyllaDBProcessNofileRLimit(ctx context.Context, podClient corev1client.PodInterface, sc *scyllav1.ScyllaCluster, expectedValue string) {
+	g.GinkgoHelper()
+
+	// Sanity check.
+	o.Expect(sc.Spec.Datacenter.Racks).NotTo(o.BeEmpty())
+	podName := fmt.Sprintf("%s-%d", naming.StatefulSetNameForRackForScyllaCluster(sc.Spec.Datacenter.Racks[0], sc), 0)
+	for _, rlimit := range []string{"SOFT", "HARD"} {
+		framework.By("Validating %s file limit of Scylla process", rlimit)
+
+		ec := &corev1.EphemeralContainer{
+			TargetContainerName: naming.ScyllaContainerName,
+			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name:            fmt.Sprintf("e2e-prlimits-%s", strings.ToLower(rlimit)),
+				Image:           configassests.Project.OperatorTests.NodeSetupImage,
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Command:         []string{"bash"},
+				Args: []string{
+					"-euEo",
+					"pipefail",
+					"-O",
+					"inherit_errexit",
+					"-c",
+					fmt.Sprintf(`prlimit --pid=$(pidof scylla) --nofile --noheadings --output=%s`, rlimit),
+				},
+			},
+		}
+
+		pod, ecLogs, err := utils.RunEphemeralContainerAndCollectLogs(ctx, podClient, podName, ec)
+		o.Expect(err).NotTo(o.HaveOccurred())
+		ephemeralContainerState := controllerhelpers.FindContainerStatus(pod, ec.Name)
+		o.Expect(ephemeralContainerState).NotTo(o.BeNil())
+		o.Expect(ephemeralContainerState.State.Terminated).NotTo(o.BeNil())
+		o.Expect(ephemeralContainerState.State.Terminated.ExitCode).To(o.BeEquivalentTo(0))
+		o.Expect(strings.TrimSpace(string(ecLogs))).To(o.Equal(expectedValue))
+	}
+}
