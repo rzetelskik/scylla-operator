@@ -285,7 +285,10 @@ func (ncdc *Controller) syncJobs(ctx context.Context, nc *scyllav1alpha1.NodeCon
 
 	klog.V(4).InfoS("Required jobs", "Count", len(requiredJobs))
 	for _, j := range requiredJobs {
-		fresh, _, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j, resourceapply.ApplyOptions{})
+		fresh, changed, err := resourceapply.ApplyJob(ctx, ncdc.kubeClient.BatchV1(), ncdc.namespacedJobLister, ncdc.eventRecorder, j, resourceapply.ApplyOptions{})
+		if changed {
+			controllerhelpers.AddGenericProgressingStatusCondition(&progressingConditions, fmt.Sprintf(jobControllerNodeTuneProgressingConditionFormat, ncdc.nodeName), j, "apply", nc.Generation)
+		}
 		if err != nil {
 			return progressingConditions, fmt.Errorf("can't create job %s: %w", naming.ObjRef(j), err)
 		}
