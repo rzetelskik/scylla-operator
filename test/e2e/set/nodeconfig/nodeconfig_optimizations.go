@@ -186,7 +186,6 @@ var _ = g.Describe("NodeConfig Optimizations", framework.Serial, func() {
 
 		patch, err := controllerhelpers.GenerateMergePatch(nc, ncCopy)
 		o.Expect(err).NotTo(o.HaveOccurred())
-		framework.By("Updating the NodeConfig to change fs.nr_open sysctl")
 		nc, err = f.ScyllaAdminClient().ScyllaV1alpha1().NodeConfigs().Patch(ctx, nc.Name, types.MergePatchType, patch, metav1.PatchOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
