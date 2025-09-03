@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 	apimachineryutilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 )
@@ -118,16 +119,24 @@ func (o *RlimitsJobOptions) changeRlimits(ctx context.Context) error {
 		return fmt.Errorf("can't check maximum possible nofile limit: %w", err)
 	}
 
-	klog.InfoS("Changing process nofile rlimits", "PID", o.PID, "nofile", maxNofileLimit)
-	err = unix.Prlimit(o.PID, unix.RLIMIT_NOFILE, &unix.Rlimit{
-		// Soft limit
-		Cur: maxNofileLimit,
-		// Hard limit
-		Max: maxNofileLimit,
-	}, nil)
-
+	childPIDs, err := getChildPIDs(o.procfsPath, o.PID)
 	if err != nil {
-		return fmt.Errorf("can't set nofile rlimit of %d process: %w", o.PID, err)
+		return fmt.Errorf("can't get child PIDs of process %d: %w", o.PID, err)
+	}
+
+	for _, pid := range childPIDs {
+		klog.InfoS("Changing process nofile rlimits", "PID", pid, "nofile", maxNofileLimit)
+
+		err = unix.Prlimit(o.PID, unix.RLIMIT_NOFILE, &unix.Rlimit{
+			// Soft limit
+			Cur: maxNofileLimit,
+			// Hard limit
+			Max: maxNofileLimit,
+		}, nil)
+
+		if err != nil {
+			return fmt.Errorf("can't set nofile rlimit of %d process: %w", pid, err)
+		}
 	}
 
 	return nil
@@ -147,4 +156,58 @@ func getSysctlFSNROpen(procfsPath string) (uint64, error) {
 	}
 
 	return maxNofileLimit, nil
+}
+
+// getChildPIDs recursively finds all PIDs in the process tree starting from pid.
+// It reads /proc/<pid>/task/<tid>/children for each task (thread) to find children.
+func getChildPIDs(procfsPath string, pid int) ([]int, error) {
+	visited := sets.New[int]()
+
+	var curr int
+	queue := []int{pid}
+	for len(queue) > 0 {
+		curr = queue[0]
+		queue = queue[1:]
+
+		if visited.Has(curr) {
+			continue
+		}
+		visited.Insert(curr)
+
+		taskDirPath := fmt.Sprintf("%s/%d/task", procfsPath, curr)
+		tasks, err := os.ReadDir(taskDirPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("can't read dir %q: %w", taskDirPath, err)
+			}
+
+			// Task likely ended, ignore.
+			continue
+		}
+
+		for _, task := range tasks {
+			childrenFilePath := fmt.Sprintf("%s/%s/children", taskDirPath, task.Name())
+			children, err := os.ReadFile(childrenFilePath)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					return nil, fmt.Errorf("can't open file %q: %w", childrenFilePath, err)
+				}
+
+				// TODO: comment
+				continue
+			}
+
+			childPIDs := strings.Fields(string(children))
+			for _, childPID := range childPIDs {
+				convertedChildPID, err := strconv.Atoi(childPID)
+				if err != nil {
+					return nil, fmt.Errorf("can't convert child PID %q to int: %w", childPID, err)
+				}
+
+				queue = append(queue, convertedChildPID)
+			}
+		}
+	}
+
+	return visited.UnsortedList(), nil
 }

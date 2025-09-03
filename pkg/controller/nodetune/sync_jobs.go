@@ -119,7 +119,7 @@ func (ncdc *Controller) makePerftuneJobForContainers(ctx context.Context, podSpe
 	)
 }
 
-func (ncdc *Controller) makeResourceLimitJobsForContainers(ctx context.Context, podSpec *corev1.PodSpec, scyllaPods []*corev1.Pod) ([]*batchv1.Job, error) {
+func (ncdc *Controller) makeResourceLimitJobsForContainers(ctx context.Context, podSpec *corev1.PodSpec, scyllaPods []*corev1.Pod, sysctlsNodeJobCompletionTime metav1.Time) ([]*batchv1.Job, error) {
 	cr, err := ncdc.newOwningDSControllerRef()
 	if err != nil {
 		return nil, fmt.Errorf("can't get controller ref: %w", err)
@@ -143,7 +143,7 @@ func (ncdc *Controller) makeResourceLimitJobsForContainers(ctx context.Context, 
 			continue
 		}
 
-		rlimitsJob, err := makeRlimitsJobForContainer(cr, ncdc.namespace, ncdc.nodeConfigName, ncdc.nodeName, ncdc.nodeUID, ncdc.operatorImage, podSpec, scyllaPod, *containerStatus.Info.PID)
+		rlimitsJob, err := makeRlimitsJobForContainer(cr, ncdc.namespace, ncdc.nodeConfigName, ncdc.nodeName, ncdc.nodeUID, ncdc.operatorImage, podSpec, scyllaPod, *containerStatus.Info.PID, sysctlsNodeJobCompletionTime)
 		if err != nil {
 			return nil, fmt.Errorf("can't make rlimits jobs: %w", err)
 		}
@@ -154,7 +154,7 @@ func (ncdc *Controller) makeResourceLimitJobsForContainers(ctx context.Context, 
 	return rlimitsJobs, nil
 }
 
-func (ncdc *Controller) makeJobsForContainers(ctx context.Context, nc *scyllav1alpha1.NodeConfig) ([]*batchv1.Job, error) {
+func (ncdc *Controller) makeJobsForContainers(ctx context.Context, nc *scyllav1alpha1.NodeConfig, sysctlsNodeJobCompletionTime metav1.Time) ([]*batchv1.Job, error) {
 	localScyllaPods, err := ncdc.localScyllaPodsLister.List(naming.ScyllaSelector())
 	if err != nil {
 		return nil, fmt.Errorf("can't list local scylla pods: %w", err)
@@ -218,7 +218,7 @@ func (ncdc *Controller) makeJobsForContainers(ctx context.Context, nc *scyllav1a
 		}
 	}
 
-	resourceLimitsJobs, err := ncdc.makeResourceLimitJobsForContainers(ctx, &selfPod.Spec, runningScyllaPods)
+	resourceLimitsJobs, err := ncdc.makeResourceLimitJobsForContainers(ctx, &selfPod.Spec, runningScyllaPods, sysctlsNodeJobCompletionTime)
 	if err != nil {
 		return nil, fmt.Errorf("can't make resource limits jobs: %w", err)
 	}
@@ -262,7 +262,17 @@ func (ncdc *Controller) syncJobs(ctx context.Context, nc *scyllav1alpha1.NodeCon
 		return progressingConditions, fmt.Errorf("can't make Jobs for node: %w", err)
 	}
 
-	requiredForContainers, err := ncdc.makeJobsForContainers(ctx, nc)
+	var sysctlsNodeJobCompletionTime metav1.Time
+	sysctlsNodeJobName, err := naming.NodeConfigSysctlsJobForNodeName(string(ncdc.nodeUID))
+	if err != nil {
+		return progressingConditions, fmt.Errorf("can't get sysctls node job name: %w", err)
+	}
+
+	if sysctlsNodeJob, ok := jobs[sysctlsNodeJobName]; ok && sysctlsNodeJob.Status.CompletionTime != nil {
+		sysctlsNodeJobCompletionTime = *sysctlsNodeJob.Status.CompletionTime
+	}
+
+	requiredForContainers, err := ncdc.makeJobsForContainers(ctx, nc, sysctlsNodeJobCompletionTime)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't make Jobs for containers: %w", err)
 	}

@@ -276,7 +276,7 @@ sysctl --load ` + hostSysctlConfPath + `
 	return job, nil
 }
 
-func makeRlimitsJobForContainer(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName string, nodeUID types.UID, image string, podSpec *corev1.PodSpec, scyllaPod *corev1.Pod, scyllaHostPID int) (*batchv1.Job, error) {
+func makeRlimitsJobForContainer(controllerRef *metav1.OwnerReference, namespace, nodeConfigName, nodeName string, nodeUID types.UID, image string, podSpec *corev1.PodSpec, scyllaPod *corev1.Pod, scyllaHostPID int, sysctlsNodeJobCompletionTime metav1.Time) (*batchv1.Job, error) {
 	scyllaContainerID, err := controllerhelpers.GetScyllaContainerID(scyllaPod)
 	if err != nil {
 		return nil, fmt.Errorf("can't get scylla container id: %w", err)
@@ -295,9 +295,16 @@ func makeRlimitsJobForContainer(controllerRef *metav1.OwnerReference, namespace,
 		naming.NodeConfigJobForNodeUIDLabel: string(nodeUID),
 		naming.NodeConfigJobTypeLabel:       string(naming.NodeConfigJobTypeContainerResourceLimits),
 	}
+
+	inputsHash, err := hashutil.HashObjects(sysctlsNodeJobCompletionTime)
+	if err != nil {
+		return nil, fmt.Errorf("can't calculate inputs hash: %w", err)
+	}
+
 	annotations := map[string]string{
 		naming.NodeConfigJobForNodeKey: nodeName,
 		naming.NodeConfigJobData:       string(jobDataBytes),
+		naming.InputsHashAnnotation:    inputsHash,
 	}
 
 	return &batchv1.Job{
