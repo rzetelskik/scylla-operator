@@ -267,6 +267,7 @@ rules:
   - scylladbmonitorings/finalizers
   - scylladbmanagerclusterregistrations/finalizers
   - scylladbmanagertasks/finalizers
+  - remoteowners/finalizers
   verbs:
   - update
 - apiGroups:
