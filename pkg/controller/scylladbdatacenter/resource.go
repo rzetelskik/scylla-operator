@@ -27,8 +27,10 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apimachineryutilerrors "k8s.io/apimachinery/pkg/util/errors"
 	apimachineryutilintstr "k8s.io/apimachinery/pkg/util/intstr"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corev1listers "k8s.io/client-go/listers/core/v1"
@@ -2110,4 +2112,118 @@ func cloneMapExcludingKeysOrEmpty[M ~map[K]V, S ~[]K, K comparable, V any](m M, 
 		delete(r, k)
 	}
 	return r
+}
+
+func makeScyllaDBStatusReport(sdc *scyllav1alpha1.ScyllaDBDatacenter, services map[string]*corev1.Service, podLister corev1listers.PodLister) (*scyllav1alpha1.ScyllaDBStatusReport, []metav1.Condition, error) {
+	var progressingConditions []metav1.Condition
+	var err error
+
+	var errs []error
+	var nodeStatusReports []scyllav1alpha1.NodeStatusReport
+	for _, rack := range sdc.Spec.Racks {
+		rackNodeCount, err := controllerhelpers.GetRackNodeCount(sdc, rack.Name)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("can't get rack %q node count of ScyllaDBDatacenter %q: %w", rack.Name, naming.ObjRef(sdc), err))
+			continue
+		}
+
+		for ord := int32(0); ord < *rackNodeCount; ord++ {
+			svcName := naming.MemberServiceName(rack, sdc, int(ord))
+			svc, ok := services[svcName]
+			if !ok {
+				progressingConditions = append(progressingConditions, metav1.Condition{
+					Type:               scyllaDBStatusReportControllerProgressingCondition,
+					Status:             metav1.ConditionTrue,
+					Reason:             "WaitingForService",
+					Message:            fmt.Sprintf("Waiting for Service %q", naming.ManualRef(sdc.Namespace, svcName)),
+					ObservedGeneration: sdc.Generation,
+				})
+
+				continue
+			}
+
+			hostID, ok := svc.Annotations[naming.HostIDAnnotation]
+			if !ok {
+				// Host ID hasn't been propagated yet, do not report status for this node.
+				// If the node is already a part of the cluster, we'll see it in other nodes' statuses.
+				// FIXME: could this lead to a race?
+				continue
+			}
+
+			nodeStatusReport := scyllav1alpha1.NodeStatusReport{
+				HostID: hostID,
+			}
+
+			podName := naming.PodNameFromService(svc)
+			pod, err := podLister.Pods(sdc.Namespace).Get(podName)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					errs = append(errs, fmt.Errorf("can't get pod %q: %w", naming.ManualRef(sdc.Namespace, podName), err))
+					continue
+				}
+
+				// Pod is missing, report an empty status.
+				nodeStatusReports = append(nodeStatusReports, nodeStatusReport)
+				continue
+			}
+
+			nodeStatusReportAnnotationValue, ok := pod.Annotations[naming.NodeStatusReportAnnotation]
+			if !ok {
+				// The node might not have reported its status yet, report an empty status.
+				nodeStatusReports = append(nodeStatusReports, nodeStatusReport)
+				continue
+			}
+
+			var internalNodeStatusReport internalapi.NodeStatusReport
+			err = internalNodeStatusReport.Decode(strings.NewReader(nodeStatusReportAnnotationValue))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("can't decode annotation %q of pod %q for ScyllaDBDatacenter %q: %w", naming.NodeStatusReportAnnotation, naming.ManualRef(sdc.Namespace, podName), naming.ObjRef(sdc), err))
+				continue
+			}
+
+			if internalNodeStatusReport.Error != nil {
+				// The node reported an error, report an empty status.
+				nodeStatusReports = append(nodeStatusReports, nodeStatusReport)
+				continue
+			}
+
+			nodeStatusReport.ObservedNodes = internalNodeStatusReport.ObservedNodes
+			nodeStatusReports = append(nodeStatusReports, nodeStatusReport)
+		}
+	}
+
+	err = apimachineryutilerrors.NewAggregate(errs)
+	if err != nil {
+		return nil, progressingConditions, err
+	}
+
+	name, err := naming.ScyllaDBStatusReportNameForScyllaDBDatacenter(sdc)
+	if err != nil {
+		return nil, progressingConditions, fmt.Errorf("can't get ScyllaDBStatusReport name for ScyllaDBDatacenter %q: %w", naming.ObjRef(sdc), err)
+	}
+
+	labels := cloneMapExcludingKeysOrEmpty(sdc.Labels, nonPropagatedLabelKeys)
+	maps.Copy(labels, naming.ClusterLabels(sdc))
+
+	annotations := cloneMapExcludingKeysOrEmpty(sdc.Annotations, nonPropagatedAnnotationKeys)
+
+	ssr := &scyllav1alpha1.ScyllaDBStatusReport{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   sdc.Namespace,
+			Labels:      labels,
+			Annotations: annotations,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(sdc, scyllav1alpha1.ScyllaDBDatacenterGVK),
+			},
+		},
+		Datacenters: []scyllav1alpha1.DatacenterStatusReport{
+			{
+				Name:  naming.GetScyllaDBDatacenterGossipDatacenterName(sdc),
+				Nodes: nodeStatusReports,
+			},
+		},
+	}
+
+	return ssr, progressingConditions, nil
 }
