@@ -371,3 +371,11 @@ func NodeConfigSysctlsJobForNodeName(nodeUID string) (string, error) {
 func NodeConfigSysctlConfigMapName(nc *scyllav1alpha1.NodeConfig) (string, error) {
 	return generateTruncatedHashedName(apimachineryutilvalidation.DNS1123SubdomainMaxLength, nc.Name, "sysctl")
 }
+
+func ScyllaDBDatacenterNodesStatusReportName(sdc *scyllav1alpha1.ScyllaDBDatacenter) (string, error) {
+	return generateTruncatedHashedName(apimachineryutilvalidation.DNS1123SubdomainMaxLength, sdc.Name)
+}
+
+func ScyllaDBDatacenterNodesStatusReportSelectorLabelValue(sdc *scyllav1alpha1.ScyllaDBDatacenter) string {
+	return sdc.Name
+}
