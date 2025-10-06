@@ -297,6 +297,7 @@ const (
 )
 
 const (
+	RemoteClusterScyllaDBStatusReportLabel = "scylla-operator.scylladb.com/remote-cluster-scylladb-status-report"
 	// TODO: comment
 	ScyllaDBStatusReportSelectorLabel = "scylla-operator.scylladb.com/scylladb-status-report-selector"
 )

@@ -368,6 +368,14 @@ func ScyllaDBStatusReportName(sdc *scyllav1alpha1.ScyllaDBDatacenter) (string, e
 	return generateTruncatedHashedName(apimachineryutilvalidation.DNS1123SubdomainMaxLength, sdc.Name)
 }
 
+func ExternalScyllaDBStatusReportName(sc *scyllav1alpha1.ScyllaDBCluster, dc *scyllav1alpha1.ScyllaDBClusterDatacenter) (string, error) {
+	return generateTruncatedHashedName(apimachineryutilvalidation.DNS1123SubdomainMaxLength, sc.Name, dc.Name, "external")
+}
+
 func ScyllaDBStatusReportSelectorLabelValue(sdc *scyllav1alpha1.ScyllaDBDatacenter) string {
 	return sdc.Name
+}
+
+func ExternalScyllaDBStatusReportSelectorLabelValue(sc *scyllav1alpha1.ScyllaDBCluster, dc *scyllav1alpha1.ScyllaDBClusterDatacenter) string {
+	return ScyllaDBDatacenterName(sc, dc)
 }

@@ -138,10 +138,15 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 	// To overcome this, the selector we use for Endpoints is a superset of the selector of other managed objects.
 	scRemoteEndpointsSelector := naming.ScyllaDBClusterRemoteEndpointsSelector(sc)
 
+	// Operator instances running in remote clusters propagate ScyllaDBDatacenter's labels into their managed ScyllaDBStatusReports.
+	// TODO: comment
+	scRemoteScyllaDBStatusReportsSelector := naming.ScyllaDBClusterRemoteScyllaDBStatusReportSelector(sc)
+
 	// Operator reconciles objects in remote Kubernetes clusters, hence we can't set up a OwnerReference to ScyllaDBCluster
 	// because it's not there. Instead, we will manage dependent object ownership via a RemoteOwner.
 	type remoteCT = *scyllav1alpha1.RemoteOwner
-	var objectErrMaps map[string][]error
+
+	objectErrMaps := map[string][]error{}
 
 	remoteClusterNames := oslices.ConvertSlice(sc.Spec.Datacenters, func(dc scyllav1alpha1.ScyllaDBClusterDatacenter) string {
 		return dc.RemoteKubernetesClusterName
@@ -301,6 +306,29 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 		objectErrMaps[remoteClusterName] = append(objectErrMaps[remoteClusterName], fmt.Errorf("can't get remote scylladbdatacenters for %q remote cluster: %w", remoteClusterName, err))
 	}
 
+	remoteScyllaDBStatusReportMap, errMap := controllerhelpers.GetRemoteObjects[remoteCT, *scyllav1alpha1.ScyllaDBStatusReport](ctx, remoteClusterNames, remoteControllers, remoteControllerGVK, scRemoteScyllaDBStatusReportsSelector, &controllerhelpers.ClusterControlleeManagerGetObjectsFuncs[remoteCT, *scyllav1alpha1.ScyllaDBStatusReport]{
+		ClusterFunc: func(clusterName string) (controllerhelpers.ControlleeManagerGetObjectsInterface[remoteCT, *scyllav1alpha1.ScyllaDBStatusReport], error) {
+			ns, ok := remoteNamespaces[clusterName]
+			if !ok {
+				return nil, nil
+			}
+
+			_, scyllaClusterClient, err := scc.getClusterClients(clusterName)
+			if err != nil {
+				return nil, fmt.Errorf("can't get cluster %q clients: %w", clusterName, err)
+			}
+
+			return &controllerhelpers.ControlleeManagerGetObjectsFuncs[remoteCT, *scyllav1alpha1.ScyllaDBStatusReport]{
+				GetControllerUncachedFunc: scyllaClusterClient.ScyllaV1alpha1().RemoteOwners(ns.Name).Get,
+				ListObjectsFunc:           scc.remoteScyllaDBStatusReportLister.Cluster(clusterName).ScyllaDBStatusReports(ns.Name).List,
+				PatchObjectFunc:           scyllaClusterClient.ScyllaV1alpha1().ScyllaDBStatusReports(ns.Name).Patch,
+			}, nil
+		},
+	})
+	for remoteClusterName, err := range errMap {
+		objectErrMaps[remoteClusterName] = append(objectErrMaps[remoteClusterName], fmt.Errorf("can't get remote scylladbstatusreports for %q remote cluster: %w", remoteClusterName, err))
+	}
+
 	status := scc.calculateStatus(sc, remoteScyllaDBDatacenterMap)
 
 	if sc.DeletionTimestamp != nil {
@@ -440,6 +468,14 @@ func (scc *Controller) sync(ctx context.Context, key string) error {
 				degradedCondition:    makeRemoteScyllaDBDatacenterControllerDatacenterDegradedCondition(dc.Name),
 				syncFn: func(remoteNamespace *corev1.Namespace, remoteController metav1.Object) ([]metav1.Condition, error) {
 					return scc.syncRemoteScyllaDBDatacenters(ctx, sc, &dc, status, remoteNamespace, remoteController, remoteScyllaDBDatacenterMap, managingClusterDomain)
+				},
+			},
+			{
+				kind:                 "ScyllaDBStatusReport",
+				progressingCondition: makeRemoteScyllaDBStatusReportControllerDatacenterProgressingCondition(dc.Name),
+				degradedCondition:    makeRemoteScyllaDBStatusReportControllerDatacenterDegradedCondition(dc.Name),
+				syncFn: func(remoteNamespace *corev1.Namespace, remoteController metav1.Object) ([]metav1.Condition, error) {
+					return scc.syncRemoteScyllaDBStatusReports(ctx, sc, &dc, remoteNamespace, remoteController, remoteScyllaDBStatusReportMap[dc.RemoteKubernetesClusterName], remoteNamespaces, remoteScyllaDBDatacenterMap, managingClusterDomain)
 				},
 			},
 		}
