@@ -246,6 +246,10 @@ const (
 )
 
 const (
+	RemoteClusterScyllaDBDatacenterNodesStatusReportLabel = "scylla-operator.scylladb.com/remote-cluster-scylladb-datacenter-nodes-status-report"
+)
+
+const (
 	KubeConfigSecretKey string = "kubeconfig"
 )
 
