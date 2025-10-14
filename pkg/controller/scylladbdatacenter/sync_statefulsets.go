@@ -581,7 +581,7 @@ func (sdcc *Controller) syncStatefulSets(
 			for _, requiredAnnotation := range requiredAnnotationsBeforeScaling {
 				ord, err := naming.IndexFromName(svc.Name)
 				if err != nil {
-					return nil, fmt.Errorf("can't determine ordinal from Service name %q: %w", svc.Name, err)
+					return nil, fmt.Errorf("can't determine rackOrdinal from Service name %q: %w", svc.Name, err)
 				}
 
 				if ord < *sts.Spec.Replicas {

@@ -63,6 +63,7 @@ func TestMemberService(t *testing.T) {
 		},
 	}
 	basicRackName := "rack"
+	basicRackOrdinal := 0
 	basicSVCName := "member"
 	basicSVCSelector := map[string]string{
 		"statefulset.kubernetes.io/pod-name": "member",
@@ -76,6 +77,7 @@ func TestMemberService(t *testing.T) {
 			"scylla/cluster":               "basic",
 			"scylla/datacenter":            "dc",
 			"scylla/rack":                  "rack",
+			"scylla/rack-ordinal":          "0",
 			"scylla-operator.scylladb.com/scylla-service-type": "member",
 		}
 	}
@@ -140,6 +142,7 @@ func TestMemberService(t *testing.T) {
 		scyllaDBDatacenter *scyllav1alpha1.ScyllaDBDatacenter
 		rackName           string
 		svcName            string
+		rackOrdinal        int
 		oldService         *corev1.Service
 		jobs               map[string]*batchv1.Job
 		expectedService    *corev1.Service
@@ -149,6 +152,7 @@ func TestMemberService(t *testing.T) {
 			scyllaDBDatacenter: basicSC,
 			rackName:           basicRackName,
 			svcName:            basicSVCName,
+			rackOrdinal:        basicRackOrdinal,
 			oldService:         nil,
 			jobs:               nil,
 			expectedService: &corev1.Service{
@@ -171,6 +175,7 @@ func TestMemberService(t *testing.T) {
 			scyllaDBDatacenter: basicSC,
 			rackName:           basicRackName,
 			svcName:            basicSVCName,
+			rackOrdinal:        basicRackOrdinal,
 			oldService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: nil,
@@ -197,6 +202,7 @@ func TestMemberService(t *testing.T) {
 			scyllaDBDatacenter: basicSC,
 			rackName:           basicRackName,
 			svcName:            basicSVCName,
+			rackOrdinal:        basicRackOrdinal,
 			oldService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
@@ -225,6 +231,7 @@ func TestMemberService(t *testing.T) {
 			scyllaDBDatacenter: basicSC,
 			rackName:           basicRackName,
 			svcName:            basicSVCName,
+			rackOrdinal:        basicRackOrdinal,
 			oldService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
@@ -256,6 +263,7 @@ func TestMemberService(t *testing.T) {
 			scyllaDBDatacenter: basicSC,
 			rackName:           basicRackName,
 			svcName:            basicSVCName,
+			rackOrdinal:        basicRackOrdinal,
 			oldService:         nil,
 			jobs: map[string]*batchv1.Job{
 				"cleanup-member": {
@@ -312,10 +320,11 @@ func TestMemberService(t *testing.T) {
 
 				return sdc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: basicSVCName,
@@ -327,6 +336,7 @@ func TestMemberService(t *testing.T) {
 						"scylla/cluster":               "basic",
 						"scylla/datacenter":            "dc",
 						"scylla/rack":                  "rack",
+						"scylla/rack-ordinal":          "0",
 						"scylla-operator.scylladb.com/scylla-service-type": "member",
 					},
 					Annotations: map[string]string{
@@ -358,10 +368,11 @@ func TestMemberService(t *testing.T) {
 
 				return sc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            basicSVCName,
@@ -390,10 +401,11 @@ func TestMemberService(t *testing.T) {
 
 				return sc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            basicSVCName,
@@ -421,10 +433,11 @@ func TestMemberService(t *testing.T) {
 
 				return sc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            basicSVCName,
@@ -471,10 +484,11 @@ func TestMemberService(t *testing.T) {
 
 				return sc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: basicSVCName,
@@ -531,10 +545,11 @@ func TestMemberService(t *testing.T) {
 
 				return sc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: basicSVCName,
@@ -570,10 +585,11 @@ func TestMemberService(t *testing.T) {
 				}
 				return sdc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            basicSVCName,
@@ -601,10 +617,11 @@ func TestMemberService(t *testing.T) {
 				}
 				return sdc
 			}(),
-			rackName:   basicRackName,
-			svcName:    basicSVCName,
-			oldService: nil,
-			jobs:       nil,
+			rackName:    basicRackName,
+			svcName:     basicSVCName,
+			rackOrdinal: basicRackOrdinal,
+			oldService:  nil,
+			jobs:        nil,
 			expectedService: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            basicSVCName,
@@ -624,7 +641,7 @@ func TestMemberService(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := MemberService(tc.scyllaDBDatacenter, tc.rackName, tc.svcName, tc.oldService, tc.jobs)
+			got, err := MemberService(tc.scyllaDBDatacenter, tc.rackName, tc.rackOrdinal, tc.svcName, tc.oldService, tc.jobs)
 			if err != nil {
 				t.Fatal(err)
 			}

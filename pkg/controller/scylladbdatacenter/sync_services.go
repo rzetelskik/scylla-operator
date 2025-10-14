@@ -3,7 +3,6 @@ package scylladbdatacenter
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -22,8 +21,6 @@ import (
 	apimachineryutilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 )
-
-var serviceOrdinalRegex = regexp.MustCompile("^.*-([0-9]+)$")
 
 func (sdcc *Controller) makeServices(sdc *scyllav1alpha1.ScyllaDBDatacenter, oldServices map[string]*corev1.Service, jobs map[string]*batchv1.Job) ([]*corev1.Service, error) {
 	identityService, err := IdentityService(sdc)
@@ -45,7 +42,7 @@ func (sdcc *Controller) makeServices(sdc *scyllav1alpha1.ScyllaDBDatacenter, old
 		for ord := int32(0); ord < *rackNodes; ord++ {
 			svcName := fmt.Sprintf("%s-%d", stsName, ord)
 			oldSvc := oldServices[svcName]
-			svc, err := MemberService(sdc, rack.Name, svcName, oldSvc, jobs)
+			svc, err := MemberService(sdc, rack.Name, int(ord), svcName, oldSvc, jobs)
 			if err != nil {
 				return nil, fmt.Errorf("can't create member service for %d'th node: %w", ord, err)
 			}
@@ -100,16 +97,15 @@ func (sdcc *Controller) pruneServices(
 			errs = append(errs, fmt.Errorf("statefulset %s/%s is missing", sdc.Namespace, stsName))
 			continue
 		}
-		// TODO: Label services with the ordinal instead of parsing.
-		// TODO: Move it to a function and unit test it.
-		svcOrdinalStrings := serviceOrdinalRegex.FindStringSubmatch(svc.Name)
-		if len(svcOrdinalStrings) != 2 {
-			errs = append(errs, fmt.Errorf("can't parse ordinal from service %s/%s", svc.Namespace, svc.Name))
+
+		svcOrdinalString, ok := svc.Labels[naming.RackOrdinalLabel]
+		if !ok {
+			errs = append(errs, fmt.Errorf("service %q is missing %q label", naming.ObjRef(svc), naming.RackOrdinalLabel))
 			continue
 		}
-		svcOrdinal, err := strconv.Atoi(svcOrdinalStrings[1])
+		svcOrdinal, err := strconv.Atoi(svcOrdinalString)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("can't parse %q label value %q of service %q: %w", naming.RackOrdinalLabel, svcOrdinalString, naming.ObjRef(svc), err))
 			continue
 		}
 		if int32(svcOrdinal) < *sts.Spec.Replicas {

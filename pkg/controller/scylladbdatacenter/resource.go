@@ -112,7 +112,7 @@ func IdentityService(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.Service, e
 	}, nil
 }
 
-func MemberService(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName, name string, oldService *corev1.Service, jobs map[string]*batchv1.Job) (*corev1.Service, error) {
+func MemberService(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName string, rackOrdinal int, name string, oldService *corev1.Service, jobs map[string]*batchv1.Job) (*corev1.Service, error) {
 	labels := map[string]string{}
 
 	if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.NodeService.Labels != nil {
@@ -125,6 +125,7 @@ func MemberService(sdc *scyllav1alpha1.ScyllaDBDatacenter, rackName, name string
 	maps.Copy(labels, naming.ClusterLabels(sdc))
 	labels[naming.DatacenterNameLabel] = naming.GetScyllaDBDatacenterGossipDatacenterName(sdc)
 	labels[naming.RackNameLabel] = rackName
+	labels[naming.RackOrdinalLabel] = strconv.Itoa(rackOrdinal)
 	labels[naming.ScyllaServiceTypeLabel] = string(naming.ScyllaServiceTypeMember)
 
 	annotations := map[string]string{}
