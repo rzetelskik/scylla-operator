@@ -17,8 +17,10 @@ import (
 	configassets "github.com/scylladb/scylla-operator/assets/config"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
+	"github.com/scylladb/scylla-operator/pkg/features"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
+	"github.com/scylladb/scylla-operator/pkg/semver"
 	"github.com/scylladb/scylla-operator/test/e2e/framework"
 	"github.com/scylladb/scylla-operator/test/e2e/utils"
 	"github.com/scylladb/scylla-operator/test/e2e/utils/verification"
@@ -26,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
@@ -35,7 +38,8 @@ var _ = g.Describe("Scylla Manager integration", framework.RequiresObjectStorage
 	type entry struct {
 		scyllaRepository           string
 		scyllaVersion              string
-		preTargetClusterCreateHook func(cluster *scyllav1.ScyllaCluster)
+		preSourceClusterCreateHook func(*scyllav1.ScyllaCluster)
+		preTargetClusterCreateHook func(*scyllav1.ScyllaCluster)
 		postSchemaRestoreHook      func(context.Context, *framework.Framework, *scyllav1.ScyllaCluster)
 	}
 
@@ -50,12 +54,23 @@ var _ = g.Describe("Scylla Manager integration", framework.RequiresObjectStorage
 			sourceSC.Spec.Version = e.scyllaVersion
 		}
 
+		sv := semver.NewScyllaVersion(sourceSC.Spec.Version)
+		if !sv.SupportFeatureSafe(semver.ScyllaDBVersionRequiredForBootstrapSynchronisation) {
+			// BootstrapSynchronisation requires Scylla 2025.2.Z or newer.
+			// It would be preferred to disable the feature gate instead, but we have no control over the operator from the test.
+			setForceProceedToBootstrapAnnotationTrue(sourceSC)
+		}
+
 		objectStorageSettings, ok := f.GetClusterObjectStorageSettings()
 		o.Expect(ok).To(o.BeTrue(), "cluster object storage settings must be configured for this test")
 
 		setUpObjectStorageCredentials(ctx, f.Namespace(), f.Client, sourceSC, objectStorageSettings)
 
 		objectStorageLocation := utils.LocationForScyllaManager(objectStorageSettings)
+
+		if e.preSourceClusterCreateHook != nil {
+			e.preSourceClusterCreateHook(sourceSC)
+		}
 
 		framework.By("Creating source ScyllaCluster")
 		sourceSC, err := f.ScyllaClient().ScyllaV1().ScyllaClusters(f.Namespace()).Create(ctx, sourceSC, metav1.CreateOptions{})
@@ -281,6 +296,13 @@ var _ = g.Describe("Scylla Manager integration", framework.RequiresObjectStorage
 		targetSC.Spec.Datacenter.Racks[0].Members = sourceSC.Spec.Datacenter.Racks[0].Members
 		targetSC.Spec.Repository = sourceSC.Spec.Repository
 		targetSC.Spec.Version = sourceSC.Spec.Version
+
+		sv = semver.NewScyllaVersion(targetSC.Spec.Version)
+		if !sv.SupportFeatureSafe(semver.ScyllaDBVersionRequiredForBootstrapSynchronisation) {
+			// BootstrapSynchronisation requires Scylla 2025.2.Z or newer.
+			// It would be preferred to disable the feature gate instead, but we have no control over the operator from the test.
+			setForceProceedToBootstrapAnnotationTrue(targetSC)
+		}
 
 		if e.preTargetClusterCreateHook != nil {
 			e.preTargetClusterCreateHook(targetSC)
@@ -877,4 +899,16 @@ func setUpS3Credentials(ctx context.Context, coreClient corev1client.CoreV1Inter
 			SubPath:   "credentials",
 		})
 	}
+}
+
+func setForceProceedToBootstrapAnnotationTrue(sc *scyllav1.ScyllaCluster) {
+	g.GinkgoHelper()
+
+	if !utilfeature.DefaultMutableFeatureGate.Enabled(features.BootstrapSynchronisation) {
+		// Skip setting the annotation if the feature gate is disabled.
+		return
+	}
+
+	framework.Infof("Setting %q annotation to true on ScyllaCluster", naming.ForceProceedToBootstrapAnnotation)
+	metav1.SetMetaDataAnnotation(&sc.ObjectMeta, naming.ForceProceedToBootstrapAnnotation, "true")
 }
