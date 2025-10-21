@@ -24,10 +24,11 @@ import (
 type Controller struct {
 	*controllertools.Observer
 
-	namespace               string
-	serviceName             string
-	selectorLabelValue      string
-	bootstrapPreconditionCh chan struct{}
+	namespace                            string
+	serviceName                          string
+	selectorLabelValue                   string
+	singleReportAllowNonReportingHostIDs bool
+	bootstrapPreconditionCh              chan struct{}
 
 	serviceLister                             corev1listers.ServiceLister
 	scyllaDBDatacenterNodesStatusReportLister scyllav1alpha1listers.ScyllaDBDatacenterNodesStatusReportLister
@@ -37,17 +38,19 @@ func NewController(
 	namespace string,
 	serviceName string,
 	selectorLabelValue string,
+	singleReportAllowNonReportingHostIDs bool,
 	bootstrapPreconditionCh chan struct{},
 	kubeClient kubernetes.Interface,
 	serviceInformer corev1informers.ServiceInformer,
 	scyllaDBDatacenterNodesStatusReportInformer scyllav1alpha1informers.ScyllaDBDatacenterNodesStatusReportInformer,
 ) (*Controller, error) {
 	c := &Controller{
-		namespace:               namespace,
-		serviceName:             serviceName,
-		selectorLabelValue:      selectorLabelValue,
-		bootstrapPreconditionCh: bootstrapPreconditionCh,
-		serviceLister:           serviceInformer.Lister(),
+		namespace:                            namespace,
+		serviceName:                          serviceName,
+		selectorLabelValue:                   selectorLabelValue,
+		singleReportAllowNonReportingHostIDs: singleReportAllowNonReportingHostIDs,
+		bootstrapPreconditionCh:              bootstrapPreconditionCh,
+		serviceLister:                        serviceInformer.Lister(),
 		scyllaDBDatacenterNodesStatusReportLister: scyllaDBDatacenterNodesStatusReportInformer.Lister(),
 	}
 
@@ -93,7 +96,7 @@ func (c *Controller) Sync(ctx context.Context) error {
 		return fmt.Errorf("can't list ScyllaDBDatacenterNodesStatusReports: %w", err)
 	}
 
-	proceedWithBootstrap, err := shouldProceedWithBootstrap(svc, scyllaDBDatacenterNodesStatusReports, isBootstrapPreconditionSatisfied)
+	proceedWithBootstrap, err := shouldProceedWithBootstrap(svc, scyllaDBDatacenterNodesStatusReports, isBootstrapPreconditionSatisfiedFn(c.singleReportAllowNonReportingHostIDs))
 	if err != nil {
 		return fmt.Errorf("can't determine if bootstrap should proceed: %w", err)
 	}
@@ -104,12 +107,10 @@ func (c *Controller) Sync(ctx context.Context) error {
 	return nil
 }
 
-type isBoostrapPreconditionSatisfiedFn func(scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, selfDC string, selfRack string, selfOrdinal int) bool
-
 func shouldProceedWithBootstrap(
 	svc *corev1.Service,
 	scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport,
-	isBoostrapPreconditionSatisfied isBoostrapPreconditionSatisfiedFn,
+	isBoostrapPreconditionSatisfied func([]*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, string, string, int) bool,
 ) (bool, error) {
 	svcDC, ok := svc.Labels[naming.DatacenterNameLabel]
 	if !ok {
@@ -147,7 +148,20 @@ func shouldProceedWithBootstrap(
 	return bootstrapPreconditionSatisfied, nil
 }
 
-func isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, selfDC string, selfRack string, selfOrdinal int) bool {
+func isBootstrapPreconditionSatisfiedFn(
+	singleReportAllowNonReportingHostIDs bool,
+) func([]*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, string, string, int) bool {
+	return func(
+		scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport,
+		selfDC string,
+		selfRack string,
+		selfOrdinal int,
+	) bool {
+		return isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports, selfDC, selfRack, selfOrdinal, singleReportAllowNonReportingHostIDs)
+	}
+}
+
+func isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, selfDC string, selfRack string, selfOrdinal int, singleReportAllowNonReportingHostIDs bool) bool {
 	klog.V(4).InfoS("Verifying if bootstrap precondition is satisfied.", "Datacenter", selfDC, "Rack", selfRack, "Ordinal", selfOrdinal)
 
 	// allHostIDs is a set of host IDs of all nodes which appeared in the status report, including the reportees.
@@ -186,7 +200,9 @@ func isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports []*sc
 	// In non-automated multi-datacenter deployments, we expect nodes from external DCs to appear in the status report as reportees only.
 	// It is required to check that ALL nodes, not just reporter nodes, are present and UP in each report.
 	allowNonReportingHostIDs := false
-	if len(scyllaDBDatacenterNodesStatusReports) == 1 && scyllaDBDatacenterNodesStatusReports[0].DatacenterName == selfDC {
+	if singleReportAllowNonReportingHostIDs &&
+		len(scyllaDBDatacenterNodesStatusReports) == 1 &&
+		scyllaDBDatacenterNodesStatusReports[0].DatacenterName == selfDC {
 		allowNonReportingHostIDs = true
 	}
 

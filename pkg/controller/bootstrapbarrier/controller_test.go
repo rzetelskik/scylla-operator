@@ -43,7 +43,7 @@ func Test_shouldProceedWithBootstrap(t *testing.T) {
 		name                                 string
 		service                              *corev1.Service
 		scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport
-		isBootstrapPreconditionSatisfied     isBoostrapPreconditionSatisfiedFn
+		isBootstrapPreconditionSatisfied     func([]*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, string, string, int) bool
 		expected                             bool
 		expectedErrorString                  string
 	}{
@@ -183,6 +183,7 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 		selfDC                               string
 		selfRack                             string
 		selfOrdinal                          int
+		singleReportAllowNonReportingHostIDs bool
 		expected                             bool
 	}{
 		{
@@ -191,6 +192,7 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 			selfDC:                               "dc1",
 			selfRack:                             "rack1",
 			selfOrdinal:                          0,
+			singleReportAllowNonReportingHostIDs: false,
 			expected:                             true,
 		},
 		{
@@ -223,10 +225,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 2,
-			expected:    true,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: false,
+			expected:                             true,
 		},
 		{
 			name: "single report, a node is down",
@@ -258,10 +261,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 2,
-			expected:    false,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: false,
+			expected:                             false,
 		},
 		{
 			name: "single report, a node is missing a host ID",
@@ -284,10 +288,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 1,
-			expected:    false,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          1,
+			singleReportAllowNonReportingHostIDs: false,
+			expected:                             false,
 		},
 		{
 			name: "single report, a node is missing a status report",
@@ -316,15 +321,14 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 2,
-			expected:    false,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: false,
+			expected:                             false,
 		},
-		// In non-automated multi-datacenter deployments, we expect nodes from external DCs to appear in the status report as reportees only.
-		// They are expected to be present in all reports and UP, but they are not expected to report their own status.
 		{
-			name: "single report, additional up node reported",
+			name: "single report, additional up node reported, non-reporting nodes not allowed",
 			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{
 				{
 					DatacenterName: "dc1",
@@ -355,13 +359,54 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 2,
-			expected:    true,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: false,
+			expected:                             false,
+		},
+		// In non-automated multi-datacenter deployments, we expect nodes from external DCs to appear in the status report as reportees only.
+		// They are expected to be present in all reports and UP, but they are not expected to report their own status.
+		{
+			name: "single report, additional up node reported, non-reporting nodes allowed",
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{
+				{
+					DatacenterName: "dc1",
+					Racks: []scyllav1alpha1.RackNodesStatusReport{
+						{
+							Name: "rack1",
+							Nodes: []scyllav1alpha1.NodeStatusReport{
+								{
+									Ordinal: 0,
+									HostID:  pointer.Ptr("host0"),
+									ObservedNodes: []scyllav1alpha1.ObservedNodeStatus{
+										{HostID: "host0", Status: scyllav1alpha1.NodeStatusUp},
+										{HostID: "host1", Status: scyllav1alpha1.NodeStatusUp},
+										{HostID: "other-host0", Status: scyllav1alpha1.NodeStatusUp},
+									},
+								},
+								{
+									Ordinal: 1,
+									HostID:  pointer.Ptr("host1"),
+									ObservedNodes: []scyllav1alpha1.ObservedNodeStatus{
+										{HostID: "host0", Status: scyllav1alpha1.NodeStatusUp},
+										{HostID: "host1", Status: scyllav1alpha1.NodeStatusUp},
+										{HostID: "other-host0", Status: scyllav1alpha1.NodeStatusUp},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             true,
 		},
 		{
-			name: "single report, additional down node reported",
+			name: "single report, additional down node reported, non-reporting nodes allowed",
 			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{
 				{
 					DatacenterName: "dc1",
@@ -392,13 +437,14 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 2,
-			expected:    false,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             false,
 		},
 		{
-			name: "single report, additional up node reported but not by all",
+			name: "single report, additional up node reported but not by all, non-reporting nodes allowed",
 			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{
 				{
 					DatacenterName: "dc1",
@@ -428,10 +474,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc1",
-			selfRack:    "rack1",
-			selfOrdinal: 2,
-			expected:    false,
+			selfDC:                               "dc1",
+			selfRack:                             "rack1",
+			selfOrdinal:                          2,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             false,
 		},
 		{
 			name: "multiple reports, all nodes up",
@@ -473,10 +520,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc3",
-			selfRack:    "rack1",
-			selfOrdinal: 0,
-			expected:    true,
+			selfDC:                               "dc3",
+			selfRack:                             "rack1",
+			selfOrdinal:                          0,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             true,
 		},
 		{
 			name: "multiple reports, a node is down",
@@ -518,10 +566,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc3",
-			selfRack:    "rack1",
-			selfOrdinal: 0,
-			expected:    false,
+			selfDC:                               "dc3",
+			selfRack:                             "rack1",
+			selfOrdinal:                          0,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             false,
 		},
 		{
 			name: "multiple reports, node missing host ID in other dc",
@@ -559,12 +608,13 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc3",
-			selfRack:    "rack1",
-			selfOrdinal: 0,
-			expected:    false,
+			selfDC:                               "dc3",
+			selfRack:                             "rack1",
+			selfOrdinal:                          0,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             false,
 		},
-		// With multiple reports, we do not allow for foreign nodes to appear in a report without having reported their own status.
+		// With multiple reports, we do not allow for foreign nodes to appear in a report without having reported their own status, regardless of the singleReportAllowNonReportingHostIDs parameter.
 		{
 			name: "multiple reports, foreign up node reported",
 			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{
@@ -607,10 +657,11 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 					},
 				},
 			},
-			selfDC:      "dc2",
-			selfRack:    "rack1",
-			selfOrdinal: 0,
-			expected:    false,
+			selfDC:                               "dc2",
+			selfRack:                             "rack1",
+			selfOrdinal:                          0,
+			singleReportAllowNonReportingHostIDs: true,
+			expected:                             false,
 		},
 	}
 
@@ -618,7 +669,7 @@ func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := isBootstrapPreconditionSatisfied(tc.scyllaDBDatacenterNodesStatusReports, tc.selfDC, tc.selfRack, tc.selfOrdinal)
+			got := isBootstrapPreconditionSatisfied(tc.scyllaDBDatacenterNodesStatusReports, tc.selfDC, tc.selfRack, tc.selfOrdinal, tc.singleReportAllowNonReportingHostIDs)
 			if got != tc.expected {
 				t.Errorf("expected %v, got %v", tc.expected, got)
 			}
