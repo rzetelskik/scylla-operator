@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	apimachineryutilerrors "k8s.io/apimachinery/pkg/util/errors"
+	apimachineryutilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -49,17 +50,15 @@ func (o *BootstrapBarrierOptions) AddFlags(cmd *cobra.Command) {
 	o.InClusterReflection.AddFlags(cmd)
 
 	cmd.Flags().StringVarP(&o.ServiceName, "service-name", "", o.ServiceName, "Name of the service corresponding to the managed node.")
-	// TODO
-	cmd.Flags().StringVarP(&o.SelectorLabelValue, "selector-label-value", "", o.SelectorLabelValue, "")
+	cmd.Flags().StringVarP(&o.SelectorLabelValue, "selector-label-value", "", o.SelectorLabelValue, "Value of the selector label used to select ScyllaDBDatacenterNodesStatusReports to use for the precondition evaluation.")
 }
 
 func NewBootstrapBarrierCmd(streams genericclioptions.IOStreams) *cobra.Command {
 	o := NewBootstrapBarrierOptions(streams)
 
 	cmd := &cobra.Command{
-		Use: "run-bootstrap-barrier",
-		// TODO
-		Short: "",
+		Use:   "run-bootstrap-barrier",
+		Short: "Runs a bootstrap barrier controller that waits for preconditions to be met before allowing bootstrapping to proceed.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := o.Validate(args)
 			if err != nil {
@@ -106,8 +105,7 @@ func (o *BootstrapBarrierOptions) Validate(args []string) error {
 	if len(o.SelectorLabelValue) == 0 {
 		errs = append(errs, fmt.Errorf("selector-label-value can't be empty"))
 	} else {
-		// TODO: verify against actual requirements for a label value
-		selectorLabelValueValidationErrs := apimachineryvalidation.NameIsDNSSubdomain(o.SelectorLabelValue, false)
+		selectorLabelValueValidationErrs := apimachineryutilvalidation.IsValidLabelValue(o.SelectorLabelValue)
 		if len(selectorLabelValueValidationErrs) != 0 {
 			errs = append(errs, fmt.Errorf("invalid selector label value %q: %v", o.SelectorLabelValue, selectorLabelValueValidationErrs))
 		}

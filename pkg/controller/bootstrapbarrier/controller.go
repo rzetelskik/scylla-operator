@@ -14,6 +14,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	apimachineryutilsets "k8s.io/apimachinery/pkg/util/sets"
 	corev1informers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1listers "k8s.io/client-go/listers/core/v1"
@@ -73,18 +74,6 @@ func NewController(
 	return c, nil
 }
 
-/*
-TODO: encapsulate the logic to unit-test it with mocked listers
-The tests will cover the following scenarios:
-- basic scenarios with mocked isBootstrapPreconditionSatisfied func
-- service is missing required labels
-- service has node replacement label set
-- service has bootstrap synchronisation override annotation set to "true"
-- service has bootstrap synchronisation override annotation set to "false"
-- no status reports are listed
-- status reports are listed
-*/
-
 func (c *Controller) Sync(ctx context.Context) error {
 	startTime := time.Now()
 	klog.V(4).InfoS("Started syncing observer", "Name", c.Observer.Name(), "startTime", startTime)
@@ -97,31 +86,6 @@ func (c *Controller) Sync(ctx context.Context) error {
 		return fmt.Errorf("can't get service %q: %w", c.serviceName, err)
 	}
 
-	// TODO: check for bootstrap synchronisation override annotation
-	// if set to "true", block regardless of preconditions
-	// if set to "false", proceed regardless of preconditions
-
-	svcDC, ok := svc.Labels[naming.DatacenterNameLabel]
-	if !ok {
-		return fmt.Errorf("service %q is missing label %q", naming.ObjRef(svc), naming.DatacenterNameLabel)
-	}
-
-	svcRack, ok := svc.Labels[naming.RackNameLabel]
-	if !ok {
-		return fmt.Errorf("service %q is missing label %q", naming.ObjRef(svc), naming.RackNameLabel)
-	}
-
-	svcOrdinal, err := naming.IndexFromName(svc.Name)
-	if err != nil {
-		return fmt.Errorf("can't get ordinal from name of service %q: %w", naming.ObjRef(svc), err)
-	}
-
-	if _, ok := svc.Labels[naming.ReplacingNodeHostIDLabel]; ok {
-		klog.V(2).InfoS("Node is replacing another node, proceeding without verifying the precondition.", "Service", c.serviceName)
-		close(c.bootstrapPreconditionCh)
-		return nil
-	}
-
 	scyllaDBDatacenterNodesStatusReports, err := c.scyllaDBDatacenterNodesStatusReportLister.ScyllaDBDatacenterNodesStatusReports(c.namespace).List(labels.SelectorFromSet(labels.Set{
 		naming.ScyllaDBDatacenterNodesStatusReportSelectorLabel: c.selectorLabelValue,
 	}))
@@ -129,42 +93,89 @@ func (c *Controller) Sync(ctx context.Context) error {
 		return fmt.Errorf("can't list ScyllaDBDatacenterNodesStatusReports: %w", err)
 	}
 
-	bootstrapPreconditionSatisfied := isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports, svcDC, svcRack, int(svcOrdinal))
-	if bootstrapPreconditionSatisfied {
+	proceedWithBootstrap, err := shouldProceedWithBootstrap(svc, scyllaDBDatacenterNodesStatusReports, isBootstrapPreconditionSatisfied)
+	if err != nil {
+		return fmt.Errorf("can't determine if bootstrap should proceed: %w", err)
+	}
+	if proceedWithBootstrap {
 		close(c.bootstrapPreconditionCh)
 	}
 
 	return nil
 }
 
+type isBoostrapPreconditionSatisfiedFn func(scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, selfDC string, selfRack string, selfOrdinal int) bool
+
+func shouldProceedWithBootstrap(
+	svc *corev1.Service,
+	scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport,
+	isBoostrapPreconditionSatisfied isBoostrapPreconditionSatisfiedFn,
+) (bool, error) {
+	svcDC, ok := svc.Labels[naming.DatacenterNameLabel]
+	if !ok {
+		return false, fmt.Errorf("service %q is missing label %q", naming.ObjRef(svc), naming.DatacenterNameLabel)
+	}
+
+	svcRack, ok := svc.Labels[naming.RackNameLabel]
+	if !ok {
+		return false, fmt.Errorf("service %q is missing label %q", naming.ObjRef(svc), naming.RackNameLabel)
+	}
+
+	svcOrdinal, err := naming.IndexFromName(svc.Name)
+	if err != nil {
+		return false, fmt.Errorf("can't get ordinal from name of service %q: %w", naming.ObjRef(svc), err)
+	}
+
+	if forceProceedToBootstrapString, ok := svc.Annotations[naming.ForceProceedToBootstrapAnnotation]; ok {
+		switch forceProceedToBootstrapString {
+		case "true":
+			klog.V(4).InfoS(`Force proceed to bootstrap annotation is set to "true", proceeding without verifying the precondition.`, "Service", naming.ObjRef(svc))
+			return true, nil
+
+		default:
+			return false, fmt.Errorf("service %q has an unsupported value for annotation %q: %q", naming.ObjRef(svc), naming.ForceProceedToBootstrapAnnotation, forceProceedToBootstrapString)
+
+		}
+	}
+
+	if _, ok := svc.Labels[naming.ReplacingNodeHostIDLabel]; ok {
+		klog.V(4).InfoS("Node is replacing another node, proceeding without verifying the precondition.", "Service", naming.ObjRef(svc))
+		return true, nil
+	}
+
+	bootstrapPreconditionSatisfied := isBoostrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports, svcDC, svcRack, int(svcOrdinal))
+	return bootstrapPreconditionSatisfied, nil
+}
+
 func isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, selfDC string, selfRack string, selfOrdinal int) bool {
 	klog.V(4).InfoS("Verifying if bootstrap precondition is satisfied.", "Datacenter", selfDC, "Rack", selfRack, "Ordinal", selfOrdinal)
 
 	// allHostIDs is a set of host IDs of all nodes which appeared in the status report, including the reportees.
-	allHostIDs := map[string]bool{}
+	allHostIDs := apimachineryutilsets.New[string]()
 	// reportingHostIDToObservedNodeStatusesMap maps a reporting node's host ID to a map of observed nodes' host IDs to their statuses as observed by the reporting node.
-	reportingHostIDToObservedNodeStatusesMap := map[string]map[string]bool{}
+	reportingHostIDToObservedNodeStatusesMap := map[string]map[string]scyllav1alpha1.NodeStatus{}
 
-	for _, sdcnsr := range scyllaDBDatacenterNodesStatusReports {
-		for _, rack := range sdcnsr.Racks {
+	for _, report := range scyllaDBDatacenterNodesStatusReports {
+		for _, rack := range report.Racks {
 			for _, node := range rack.Nodes {
-				if sdcnsr.DatacenterName == selfDC && rack.Name == selfRack && node.Ordinal == selfOrdinal {
+				if report.DatacenterName == selfDC && rack.Name == selfRack && node.Ordinal == selfOrdinal {
 					// Skip self.
 					// The node is bootstrapping, so it won't have a report nor a host ID propagated.
 					continue
 				}
 
 				if node.HostID == nil {
-					klog.V(4).InfoS("A required node is missing a host ID, can't proceed with verifying the bootstrap precondition.", "RequiredNodeDatacenter", sdcnsr.DatacenterName, "RequiredNodeRack", rack.Name, "RequiredNodeOrdinal", node.Ordinal)
+					klog.V(4).InfoS("A required node is missing a host ID, can't proceed with verifying the bootstrap precondition.", "RequiredNodeDatacenter", report.DatacenterName, "RequiredNodeRack", rack.Name, "RequiredNodeOrdinal", node.Ordinal)
 					return false
 				}
 
-				allHostIDs[*node.HostID] = true
+				allHostIDs.Insert(*node.HostID)
 
-				observedNodeHostIDToNodeStatusesMap := map[string]bool{}
+				observedNodeHostIDToNodeStatusesMap := map[string]scyllav1alpha1.NodeStatus{}
 				for _, observedNode := range node.ObservedNodes {
-					allHostIDs[observedNode.HostID] = true
-					observedNodeHostIDToNodeStatusesMap[observedNode.HostID] = observedNode.Status == scyllav1alpha1.NodeStatusUp
+					allHostIDs.Insert(observedNode.HostID)
+
+					observedNodeHostIDToNodeStatusesMap[observedNode.HostID] = observedNode.Status
 				}
 
 				reportingHostIDToObservedNodeStatusesMap[*node.HostID] = observedNodeHostIDToNodeStatusesMap
@@ -197,9 +208,16 @@ func isBootstrapPreconditionSatisfied(scyllaDBDatacenterNodesStatusReports []*sc
 		}
 
 		for otherHostID := range allHostIDs {
-			if !nodeStatuses[otherHostID] {
-				// The other node is either missing from this node's report or is considered DOWN.
-				klog.V(4).InfoS("Node's status report is missing another node or considers it DOWN. Bootstrap precondition is not satisfied.", "HostID", hostID, "MissingOrDownHostID", otherHostID)
+			otherNodeStatus, hasOtherNodeStatus := nodeStatuses[otherHostID]
+			if !hasOtherNodeStatus {
+				// The other node is missing from this node's report.
+				klog.V(4).InfoS("Node's status report is missing another node. Bootstrap precondition is not satisfied.", "HostID", hostID, "MissingHostID", otherHostID)
+				return false
+			}
+
+			if otherNodeStatus != scyllav1alpha1.NodeStatusUp {
+				// The other node is considered DOWN by this node.
+				klog.V(4).InfoS("Node's status report considers another node DOWN. Bootstrap precondition is not satisfied.", "HostID", hostID, "OtherHostID", otherHostID, "OtherNodeStatus", otherNodeStatus)
 				return false
 			}
 		}

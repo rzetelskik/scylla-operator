@@ -5,9 +5,174 @@ package bootstrapbarrier
 import (
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func Test_shouldProceedWithBootstrap(t *testing.T) {
+	t.Parallel()
+
+	newService := func() *corev1.Service {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "basic-dc1-rack1-0",
+				Namespace: "default",
+				Labels: map[string]string{
+					naming.DatacenterNameLabel: "dc1",
+					naming.RackNameLabel:       "rack1",
+				},
+				Annotations: map[string]string{},
+			},
+			Spec: corev1.ServiceSpec{},
+		}
+	}
+
+	trueMockIsBootstrapPreconditionSatisfied := func(_ []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, _, _ string, _ int) bool {
+		return true
+	}
+
+	falseMockIsBootstrapPreconditionSatisfied := func(_ []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport, _, _ string, _ int) bool {
+		return false
+	}
+
+	tt := []struct {
+		name                                 string
+		service                              *corev1.Service
+		scyllaDBDatacenterNodesStatusReports []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport
+		isBootstrapPreconditionSatisfied     isBoostrapPreconditionSatisfiedFn
+		expected                             bool
+		expectedErrorString                  string
+	}{
+		{
+			name: "service is missing datacenter label",
+			service: func() *corev1.Service {
+				return &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "basic-dc1-rack1-0",
+						Namespace: "default",
+						Labels: map[string]string{
+							naming.RackNameLabel: "rack1",
+						},
+						Annotations: map[string]string{},
+					},
+					Spec: corev1.ServiceSpec{},
+				}
+			}(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     trueMockIsBootstrapPreconditionSatisfied,
+			expected:                             false,
+			expectedErrorString:                  `service "default/basic-dc1-rack1-0" is missing label "scylla/datacenter"`,
+		},
+		{
+			name: "service is missing rack label",
+			service: func() *corev1.Service {
+				return &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "basic-dc1-rack1-0",
+						Namespace: "default",
+						Labels: map[string]string{
+							naming.DatacenterNameLabel: "dc1",
+						},
+						Annotations: map[string]string{},
+					},
+					Spec: corev1.ServiceSpec{},
+				}
+			}(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     trueMockIsBootstrapPreconditionSatisfied,
+			expected:                             false,
+			expectedErrorString:                  `service "default/basic-dc1-rack1-0" is missing label "scylla/rack"`,
+		},
+		{
+			name: "service name is invalid for ordinal extraction",
+			service: func() *corev1.Service {
+				svc := newService()
+				svc.Name = "basic-dc1-rack1-ordinal"
+				return svc
+			}(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     trueMockIsBootstrapPreconditionSatisfied,
+			expected:                             false,
+			expectedErrorString:                  `can't get ordinal from name of service "default/basic-dc1-rack1-ordinal": couldn't convert 'ordinal' to a number`,
+		},
+		{
+			name: "service with force proceed to bootstrap annotation set to true",
+			service: func() *corev1.Service {
+				svc := newService()
+				svc.Annotations[naming.ForceProceedToBootstrapAnnotation] = "true"
+				return svc
+			}(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     falseMockIsBootstrapPreconditionSatisfied,
+			expected:                             true,
+			expectedErrorString:                  "",
+		},
+		{
+			name: "service with force proceed to bootstrap annotation set to an unsupported value",
+			service: func() *corev1.Service {
+				svc := newService()
+				svc.Annotations[naming.ForceProceedToBootstrapAnnotation] = ""
+				return svc
+			}(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     falseMockIsBootstrapPreconditionSatisfied,
+			expected:                             false,
+			expectedErrorString:                  `service "default/basic-dc1-rack1-0" has an unsupported value for annotation "scylla-operator.scylladb.com/force-proceed-to-bootstrap": ""`,
+		},
+		{
+			name: "service with node replacement label",
+			service: func() *corev1.Service {
+				svc := newService()
+				svc.Labels[naming.ReplacingNodeHostIDLabel] = "host-id"
+				return svc
+			}(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     falseMockIsBootstrapPreconditionSatisfied,
+			expected:                             true,
+			expectedErrorString:                  "",
+		},
+		{
+			name:                                 "bootstrap precondition satisfied",
+			service:                              newService(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     trueMockIsBootstrapPreconditionSatisfied,
+			expected:                             true,
+			expectedErrorString:                  "",
+		},
+		{
+			name:                                 "bootstrap precondition not satisfied",
+			service:                              newService(),
+			scyllaDBDatacenterNodesStatusReports: []*scyllav1alpha1.ScyllaDBDatacenterNodesStatusReport{},
+			isBootstrapPreconditionSatisfied:     falseMockIsBootstrapPreconditionSatisfied,
+			expected:                             false,
+			expectedErrorString:                  "",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := shouldProceedWithBootstrap(tc.service, tc.scyllaDBDatacenterNodesStatusReports, tc.isBootstrapPreconditionSatisfied)
+
+			errStr := ""
+			if err != nil {
+				errStr = err.Error()
+			}
+			if !cmp.Equal(errStr, tc.expectedErrorString) {
+				t.Fatalf("expected and got error strings differ: %s", cmp.Diff(tc.expectedErrorString, errStr))
+			}
+
+			if got != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, got)
+			}
+		})
+	}
+}
 
 func Test_isBootstrapPreconditionSatisfied(t *testing.T) {
 	t.Parallel()
