@@ -950,6 +950,7 @@ fi
 run-bootstrap-barrier \
 --service-name=$(SERVICE_NAME) \
 --selector-label-value=basic \
+--single-report-allow-non-reporting-host-ids=false \
 --loglevel=0 \
 `),
 										},
@@ -1627,7 +1628,7 @@ exec scylla-manager-agent \
 			expectedError: nil,
 		},
 		{
-			name: "new StatefulSet with non-empty externalSeeds in scylla container",
+			name: "new StatefulSet with non-empty externalSeeds",
 			rack: newBasicRack(),
 			scyllaDBDatacenter: func() *scyllav1alpha1.ScyllaDBDatacenter {
 				sc := newBasicScyllaDBDatacenter()
@@ -1644,6 +1645,17 @@ exec scylla-manager-agent \
 					"--external-seeds=10.0.1.1,10.0.1.2,10.0.1.3 -- \"$@\"",
 					1,
 				)
+
+				if utilfeature.DefaultMutableFeatureGate.Enabled(features.BootstrapSynchronisation) {
+					const runBootstrapBarrierInitContainerIndex = 2
+
+					sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command[len(sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command)-1] = strings.Replace(
+						sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command[len(sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command)-1],
+						`--single-report-allow-non-reporting-host-ids=false`,
+						`--single-report-allow-non-reporting-host-ids=true`,
+						1,
+					)
+				}
 
 				return sts
 			}(),

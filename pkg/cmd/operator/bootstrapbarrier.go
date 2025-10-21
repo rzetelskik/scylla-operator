@@ -32,8 +32,9 @@ type BootstrapBarrierOptions struct {
 	genericclioptions.ClientConfig
 	genericclioptions.InClusterReflection
 
-	ServiceName        string
-	SelectorLabelValue string
+	ServiceName                          string
+	SelectorLabelValue                   string
+	SingleReportAllowNonReportingHostIDs bool
 
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllaversionedclient.Interface
@@ -51,6 +52,7 @@ func (o *BootstrapBarrierOptions) AddFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVarP(&o.ServiceName, "service-name", "", o.ServiceName, "Name of the service corresponding to the managed node.")
 	cmd.Flags().StringVarP(&o.SelectorLabelValue, "selector-label-value", "", o.SelectorLabelValue, "Value of the selector label used to select ScyllaDBDatacenterNodesStatusReports to use for the precondition evaluation.")
+	cmd.Flags().BoolVarP(&o.SingleReportAllowNonReportingHostIDs, "single-report-allow-non-reporting-host-ids", "", o.SingleReportAllowNonReportingHostIDs, "Specifies whether non-reporting HostIDs are allowed when a single ScyllaDBDatacenterNodesStatusReport is used for precondition evaluation.")
 }
 
 func NewBootstrapBarrierCmd(streams genericclioptions.IOStreams) *cobra.Command {
@@ -185,6 +187,7 @@ func (o *BootstrapBarrierOptions) Execute(cmdCtx context.Context, originalStream
 		o.Namespace,
 		o.ServiceName,
 		o.SelectorLabelValue,
+		o.SingleReportAllowNonReportingHostIDs,
 		boostrapPreconditionCh,
 		o.kubeClient,
 		identityKubeInformers.Core().V1().Services(),

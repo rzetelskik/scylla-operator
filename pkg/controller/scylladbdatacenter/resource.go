@@ -716,6 +716,7 @@ fi
 run-bootstrap-barrier \
 --service-name=$(SERVICE_NAME) \
 ` + fmt.Sprintf("--selector-label-value=%s", naming.ScyllaDBDatacenterNodesStatusReportSelectorLabelValue(sdc)) + ` \
+` + fmt.Sprintf("--single-report-allow-non-reporting-host-ids=%t", len(sdc.Spec.ScyllaDB.ExternalSeeds) > 0) + ` \
 ` + fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()) + ` \
 `),
 									},
