@@ -700,25 +700,13 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 									Image:           sidecarImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Command: []string{
-										"/usr/bin/bash",
-										"-euEo",
-										"pipefail",
-										"-O",
-										"inherit_errexit",
-										"-c",
-										strings.TrimSpace(`
-if [ "$(jq 'all(.[]; .bootstrapped? == "COMPLETED")' /mnt/shared/bootstrapped.json)" = "true" ]; then
-	printf 'INFO %s bootstrap-barrier - Node has already been bootstrapped. Proceeding without running the barrier...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
-    exit 0
-fi
-
-/usr/bin/scylla-operator \
-run-bootstrap-barrier \
---service-name=$(SERVICE_NAME) \
-` + fmt.Sprintf("--selector-label-value=%s", naming.ScyllaDBDatacenterNodesStatusReportSelectorLabelValue(sdc)) + ` \
-` + fmt.Sprintf("--single-report-allow-non-reporting-host-ids=%t", len(sdc.Spec.ScyllaDB.ExternalSeeds) > 0) + ` \
-` + fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()) + ` \
-`),
+										"/usr/bin/scylla-operator",
+										"run-bootstrap-barrier",
+										"--service-name=$(SERVICE_NAME)",
+										"--sstable-bootstrapped-query-result-path=/mnt/shared/bootstrapped.json",
+										fmt.Sprintf("--selector-label-value=%s", naming.ScyllaDBDatacenterNodesStatusReportSelectorLabelValue(sdc)),
+										fmt.Sprintf("--single-report-allow-non-reporting-host-ids=%t", len(sdc.Spec.ScyllaDB.ExternalSeeds) > 0),
+										fmt.Sprintf("--loglevel=%d", cmdutil.GetLoglevelOrDefaultOrDie()),
 									},
 									Resources: corev1.ResourceRequirements{
 										Limits: corev1.ResourceList{

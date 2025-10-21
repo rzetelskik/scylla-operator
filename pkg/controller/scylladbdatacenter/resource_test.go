@@ -934,25 +934,13 @@ func TestStatefulSetForRack(t *testing.T) {
 										Image:           "scylladb/scylla-operator:latest",
 										ImagePullPolicy: "IfNotPresent",
 										Command: []string{
-											"/usr/bin/bash",
-											"-euEo",
-											"pipefail",
-											"-O",
-											"inherit_errexit",
-											"-c",
-											strings.TrimSpace(`
-if [ "$(jq 'all(.[]; .bootstrapped? == "COMPLETED")' /mnt/shared/bootstrapped.json)" = "true" ]; then
-	printf 'INFO %s bootstrap-barrier - Node has already been bootstrapped. Proceeding without running the barrier...\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
-    exit 0
-fi
-
-/usr/bin/scylla-operator \
-run-bootstrap-barrier \
---service-name=$(SERVICE_NAME) \
---selector-label-value=basic \
---single-report-allow-non-reporting-host-ids=false \
---loglevel=0 \
-`),
+											"/usr/bin/scylla-operator",
+											"run-bootstrap-barrier",
+											"--service-name=$(SERVICE_NAME)",
+											"--sstable-bootstrapped-query-result-path=/mnt/shared/bootstrapped.json",
+											"--selector-label-value=basic",
+											"--single-report-allow-non-reporting-host-ids=false",
+											"--loglevel=0",
 										},
 										Resources: corev1.ResourceRequirements{
 											Limits: corev1.ResourceList{
@@ -1649,8 +1637,8 @@ exec scylla-manager-agent \
 				if utilfeature.DefaultMutableFeatureGate.Enabled(features.BootstrapSynchronisation) {
 					const runBootstrapBarrierInitContainerIndex = 2
 
-					sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command[len(sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command)-1] = strings.Replace(
-						sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command[len(sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command)-1],
+					sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command[len(sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command)-2] = strings.Replace(
+						sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command[len(sts.Spec.Template.Spec.InitContainers[runBootstrapBarrierInitContainerIndex].Command)-2],
 						`--single-report-allow-non-reporting-host-ids=false`,
 						`--single-report-allow-non-reporting-host-ids=true`,
 						1,

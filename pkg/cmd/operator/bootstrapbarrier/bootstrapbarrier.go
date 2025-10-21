@@ -1,6 +1,6 @@
 // Copyright (C) 2025 ScyllaDB
 
-package operator
+package bootstrapbarrier
 
 import (
 	"context"
@@ -28,9 +28,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type BootstrapBarrierOptions struct {
+type Options struct {
 	genericclioptions.ClientConfig
 	genericclioptions.InClusterReflection
+	CheckBootstrappedOptions
 
 	ServiceName                          string
 	SelectorLabelValue                   string
@@ -40,34 +41,35 @@ type BootstrapBarrierOptions struct {
 	scyllaClient scyllaversionedclient.Interface
 }
 
-func NewBootstrapBarrierOptions(streams genericclioptions.IOStreams) *BootstrapBarrierOptions {
-	return &BootstrapBarrierOptions{
+func NewOptions(streams genericclioptions.IOStreams) *Options {
+	return &Options{
 		ClientConfig: genericclioptions.NewClientConfig("bootstrap-barrier"),
 	}
 }
 
-func (o *BootstrapBarrierOptions) AddFlags(cmd *cobra.Command) {
+func (o *Options) AddFlags(cmd *cobra.Command) {
 	o.ClientConfig.AddFlags(cmd)
 	o.InClusterReflection.AddFlags(cmd)
+	o.CheckBootstrappedOptions.AddFlags(cmd)
 
 	cmd.Flags().StringVarP(&o.ServiceName, "service-name", "", o.ServiceName, "Name of the service corresponding to the managed node.")
 	cmd.Flags().StringVarP(&o.SelectorLabelValue, "selector-label-value", "", o.SelectorLabelValue, "Value of the selector label used to select ScyllaDBDatacenterNodesStatusReports to use for the precondition evaluation.")
 	cmd.Flags().BoolVarP(&o.SingleReportAllowNonReportingHostIDs, "single-report-allow-non-reporting-host-ids", "", o.SingleReportAllowNonReportingHostIDs, "Specifies whether non-reporting HostIDs are allowed when a single ScyllaDBDatacenterNodesStatusReport is used for precondition evaluation.")
 }
 
-func NewBootstrapBarrierCmd(streams genericclioptions.IOStreams) *cobra.Command {
-	o := NewBootstrapBarrierOptions(streams)
+func NewCmd(streams genericclioptions.IOStreams) *cobra.Command {
+	o := NewOptions(streams)
 
 	cmd := &cobra.Command{
 		Use:   "run-bootstrap-barrier",
 		Short: "Runs a bootstrap barrier controller that waits for preconditions to be met before allowing bootstrapping to proceed.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := o.Validate(args)
+			err := o.Validate()
 			if err != nil {
 				return err
 			}
 
-			err = o.Complete(args)
+			err = o.Complete()
 			if err != nil {
 				return err
 			}
@@ -89,11 +91,12 @@ func NewBootstrapBarrierCmd(streams genericclioptions.IOStreams) *cobra.Command 
 	return cmd
 }
 
-func (o *BootstrapBarrierOptions) Validate(args []string) error {
+func (o *Options) Validate() error {
 	var errs []error
 
 	errs = append(errs, o.ClientConfig.Validate())
 	errs = append(errs, o.InClusterReflection.Validate())
+	errs = append(errs, o.CheckBootstrappedOptions.Validate())
 
 	if len(o.ServiceName) == 0 {
 		errs = append(errs, fmt.Errorf("service-name can't be empty"))
@@ -116,7 +119,7 @@ func (o *BootstrapBarrierOptions) Validate(args []string) error {
 	return apimachineryutilerrors.NewAggregate(errs)
 }
 
-func (o *BootstrapBarrierOptions) Complete(args []string) error {
+func (o *Options) Complete() error {
 	var err error
 
 	err = o.ClientConfig.Complete()
@@ -125,6 +128,11 @@ func (o *BootstrapBarrierOptions) Complete(args []string) error {
 	}
 
 	err = o.InClusterReflection.Complete()
+	if err != nil {
+		return err
+	}
+
+	err = o.CheckBootstrappedOptions.Complete()
 	if err != nil {
 		return err
 	}
@@ -142,7 +150,7 @@ func (o *BootstrapBarrierOptions) Complete(args []string) error {
 	return nil
 }
 
-func (o *BootstrapBarrierOptions) Run(originalStreams genericclioptions.IOStreams, cmd *cobra.Command) error {
+func (o *Options) Run(originalStreams genericclioptions.IOStreams, cmd *cobra.Command) error {
 	klog.Infof("%s version %s", cmd.Name(), version.Get())
 	cliflag.PrintFlags(cmd.Flags())
 
@@ -154,10 +162,15 @@ func (o *BootstrapBarrierOptions) Run(originalStreams genericclioptions.IOStream
 		cancel()
 	}()
 
+	if o.Bootstrapped {
+		klog.V(2).InfoS("Node has already been bootstrapped, skipping the bootstrap barrier.", "Service", naming.ManualRef(o.Namespace, o.ServiceName))
+		return nil
+	}
+
 	return o.Execute(ctx, originalStreams, cmd)
 }
 
-func (o *BootstrapBarrierOptions) Execute(cmdCtx context.Context, originalStreams genericclioptions.IOStreams, cmd *cobra.Command) error {
+func (o *Options) Execute(cmdCtx context.Context, originalStreams genericclioptions.IOStreams, cmd *cobra.Command) error {
 	identityKubeInformers := informers.NewSharedInformerFactoryWithOptions(
 		o.kubeClient,
 		12*time.Hour,
