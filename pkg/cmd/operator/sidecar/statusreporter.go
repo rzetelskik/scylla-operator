@@ -14,7 +14,7 @@ import (
 )
 
 type StatusReporter struct {
-	statusreport.Controller
+	controller *statusreport.Controller
 
 	interval time.Duration
 }
@@ -40,7 +40,7 @@ func NewStatusReporter(
 		return nil, fmt.Errorf("can't create status report controller: %w", err)
 	}
 
-	sr.Controller = *c
+	sr.controller = c
 
 	return sr, nil
 }
@@ -53,7 +53,7 @@ func (sr *StatusReporter) Run(ctx context.Context) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sr.Controller.Run(ctx)
+		sr.controller.Run(ctx)
 	}()
 
 	// Enqueue periodically.
@@ -69,7 +69,7 @@ func (sr *StatusReporter) Run(ctx context.Context) {
 				return
 
 			case <-ticker.C:
-				sr.Enqueue()
+				sr.controller.Enqueue()
 
 			}
 		}
