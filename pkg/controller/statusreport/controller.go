@@ -80,11 +80,7 @@ func (c *Controller) Sync(ctx context.Context) error {
 		return fmt.Errorf("can't get Pod %q: %v", naming.ManualRef(c.namespace, c.podName), err)
 	}
 
-	nodeStatusReport, err := getNodeStatusReport(ctx)
-	if err != nil {
-		return fmt.Errorf("can't get node status report: %w", err)
-	}
-
+	nodeStatusReport := getNodeStatusReport(ctx)
 	encodedNodeStatusReport, err := nodeStatusReport.Encode()
 	if err != nil {
 		return fmt.Errorf("can't encode node status report: %w", err)
@@ -113,21 +109,23 @@ func (c *Controller) Sync(ctx context.Context) error {
 	return nil
 }
 
-func getNodeStatusReport(ctx context.Context) (*internalapi.NodeStatusReport, error) {
+func getNodeStatusReport(ctx context.Context) *internalapi.NodeStatusReport {
 	scyllaClient, err := controllerhelpers.NewScyllaClientForLocalhost()
 	if err != nil {
-		return nil, fmt.Errorf("can't create Scylla client for localhost: %w", err)
+		return &internalapi.NodeStatusReport{
+			Error: pointer.Ptr(fmt.Errorf("can't create Scylla client for localhost: %w", err).Error()),
+		}
 	}
 	defer scyllaClient.Close()
 
 	nodeStatuses, err := scyllaClient.NodesStatusInfo(ctx, localhost)
 	if err != nil {
 		return &internalapi.NodeStatusReport{
-			Error: pointer.Ptr(err.Error()),
-		}, nil
+			Error: pointer.Ptr(fmt.Errorf("can't get node status info: %w", err).Error()),
+		}
 	}
 
-	var observedNodeStatuses []scyllav1alpha1.ObservedNodeStatus
+	observedNodeStatuses := make([]scyllav1alpha1.ObservedNodeStatus, 0, len(nodeStatuses))
 	for _, ns := range nodeStatuses {
 		observedNodeStatuses = append(observedNodeStatuses, scyllav1alpha1.ObservedNodeStatus{
 			HostID: ns.HostID,
@@ -137,7 +135,7 @@ func getNodeStatusReport(ctx context.Context) (*internalapi.NodeStatusReport, er
 
 	return &internalapi.NodeStatusReport{
 		ObservedNodes: observedNodeStatuses,
-	}, nil
+	}
 }
 
 func scyllaClientNodeStatusToScyllaV1Alpha1NodeStatus(status scyllaclient.NodeStatus) scyllav1alpha1.NodeStatus {
