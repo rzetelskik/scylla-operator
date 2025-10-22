@@ -24,6 +24,11 @@ const (
 	BootstrapSynchronisation featuregate.Feature = "BootstrapSynchronisation"
 )
 
+var Features = []featuregate.Feature{
+	AutomaticTLSCertificates,
+	BootstrapSynchronisation,
+}
+
 func init() {
 	apimachineryutilruntime.Must(utilfeature.DefaultMutableFeatureGate.Add(map[featuregate.Feature]featuregate.FeatureSpec{
 		AutomaticTLSCertificates: {

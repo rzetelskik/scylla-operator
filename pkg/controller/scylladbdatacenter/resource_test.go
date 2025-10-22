@@ -641,7 +641,7 @@ func TestMemberService(t *testing.T) {
 	}
 }
 
-func TestStatefulSetForRack(t *testing.T) {
+func runTestStatefulSetForRack(t *testing.T) {
 	logEnabledFeatures(t)
 
 	newBasicRack := func() scyllav1alpha1.RackSpec {
@@ -1926,27 +1926,21 @@ exec scylla-manager-agent \
 	}
 }
 
-func TestStatefulSetForRackWithReversedTLSFeature(t *testing.T) {
-	featuregatetesting.SetFeatureGateDuringTest(
-		t,
-		utilfeature.DefaultMutableFeatureGate,
-		features.AutomaticTLSCertificates,
-		!utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates),
-	)
+func TestStatefulSetForRack(t *testing.T) {
+	for _, f := range features.Features {
+		for _, enabled := range []bool{true, false} {
+			t.Run("", func(t *testing.T) {
+				featuregatetesting.SetFeatureGateDuringTest(
+					t,
+					utilfeature.DefaultFeatureGate,
+					f,
+					enabled,
+				)
 
-	t.Run("", TestStatefulSetForRack)
-}
-
-// TODO: deduplicate this? Run a matrix instead?
-func TestStatefulSetForRackWithReversedBootstrapSynchronisationFeature(t *testing.T) {
-	featuregatetesting.SetFeatureGateDuringTest(
-		t,
-		utilfeature.DefaultMutableFeatureGate,
-		features.BootstrapSynchronisation,
-		!utilfeature.DefaultMutableFeatureGate.Enabled(features.BootstrapSynchronisation),
-	)
-
-	t.Run("", TestStatefulSetForRack)
+				runTestStatefulSetForRack(t)
+			})
+		}
+	}
 }
 
 func TestMakeIngresses(t *testing.T) {
