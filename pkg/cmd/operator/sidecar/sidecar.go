@@ -30,6 +30,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	minStatusReportInterval = 1 * time.Second
+)
+
 type Options struct {
 	genericclioptions.ClientConfig
 	genericclioptions.InClusterReflection
@@ -39,12 +43,10 @@ type Options struct {
 	ExternalSeeds                     []string
 	NodesBroadcastAddressTypeString   string
 	ClientsBroadcastAddressTypeString string
-	StatusReportPeriodSeconds         int
+	StatusReportInterval              time.Duration
 
 	nodesBroadcastAddressType   scyllav1alpha1.BroadcastAddressType
 	clientsBroadcastAddressType scyllav1alpha1.BroadcastAddressType
-
-	statusReportInterval time.Duration
 
 	kubeClient kubernetes.Interface
 }
@@ -58,7 +60,7 @@ func NewOptions(streams genericclioptions.IOStreams) *Options {
 		ClientConfig:        clientConfig,
 		InClusterReflection: genericclioptions.InClusterReflection{},
 
-		StatusReportPeriodSeconds: 5,
+		StatusReportInterval: 5 * time.Second,
 	}
 }
 
@@ -101,7 +103,7 @@ func NewCmd(streams genericclioptions.IOStreams) *cobra.Command {
 	cmd.Flags().StringSliceVar(&o.ExternalSeeds, "external-seeds", o.ExternalSeeds, "The external seeds to propagate to ScyllaDB binary on startup as \"seeds\" parameter of seed-provider.")
 	cmd.Flags().StringVarP(&o.NodesBroadcastAddressTypeString, "nodes-broadcast-address-type", "", o.NodesBroadcastAddressTypeString, "Address type that is broadcasted for communication with other nodes.")
 	cmd.Flags().StringVarP(&o.ClientsBroadcastAddressTypeString, "clients-broadcast-address-type", "", o.ClientsBroadcastAddressTypeString, "Address type that is broadcasted for communication with clients.")
-	cmd.Flags().IntVarP(&o.StatusReportPeriodSeconds, "status-report-period-seconds", "", o.StatusReportPeriodSeconds, "How often (in seconds) to poll the status.")
+	cmd.Flags().DurationVarP(&o.StatusReportInterval, "status-report-interval", "", o.StatusReportInterval, "How often to poll the status.")
 
 	return cmd
 }
@@ -129,8 +131,8 @@ func (o *Options) Validate() error {
 		errs = append(errs, fmt.Errorf("unsupported value of clients-broadcast-address-type %q, supported ones are: %v", o.ClientsBroadcastAddressTypeString, validation.SupportedScyllaV1Alpha1BroadcastAddressTypes))
 	}
 
-	if o.StatusReportPeriodSeconds < 1 {
-		errs = append(errs, fmt.Errorf("status-report-period-seconds must be greater than 0"))
+	if o.StatusReportInterval < 1 {
+		errs = append(errs, fmt.Errorf("status-report-interval must not be lower than %s", minStatusReportInterval))
 	}
 
 	return apimachineryutilerrors.NewAggregate(errs)
@@ -154,8 +156,6 @@ func (o *Options) Complete() error {
 
 	o.clientsBroadcastAddressType = scyllav1alpha1.BroadcastAddressType(o.ClientsBroadcastAddressTypeString)
 	o.nodesBroadcastAddressType = scyllav1alpha1.BroadcastAddressType(o.NodesBroadcastAddressTypeString)
-
-	o.statusReportInterval = time.Second * time.Duration(o.StatusReportPeriodSeconds)
 
 	return nil
 }
@@ -203,7 +203,7 @@ func (o *Options) Run(streams genericclioptions.IOStreams, cmd *cobra.Command, a
 	sr, err := NewStatusReporter(
 		o.Namespace,
 		o.ServiceName,
-		o.statusReportInterval,
+		o.StatusReportInterval,
 		o.kubeClient,
 		identityKubeInformers.Core().V1().Pods(),
 	)
