@@ -21,7 +21,7 @@ func Test_parseSSTableBootstrappedQueryResult(t *testing.T) {
 			name:                "no data",
 			data:                []byte(``),
 			expected:            false,
-			expectedErrorString: "",
+			expectedErrorString: "can't unmarshall scylla-sstable query result: unexpected end of JSON input",
 		},
 		{
 			name:                "invalid json",

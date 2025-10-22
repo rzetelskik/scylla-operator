@@ -54,11 +54,6 @@ func (o *CheckBootstrappedOptions) Complete() error {
 }
 
 func parseSSTableBootstrappedQueryResult(rawData []byte) (bool, error) {
-	// Interpret no data as not bootstrapped.
-	if len(rawData) == 0 {
-		return false, nil
-	}
-
 	var data bootstrappedQueryResult
 	err := json.Unmarshal(rawData, &data)
 	if err != nil {

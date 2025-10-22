@@ -860,7 +860,7 @@ func TestStatefulSetForRack(t *testing.T) {
 									Command: []string{
 										"/bin/sh",
 										"-c",
-										"cp -a /usr/bin/scylla-operator /mnt/shared",
+										"cp -a /usr/bin/scylla-operator '/mnt/shared'",
 									},
 									Resources: corev1.ResourceRequirements{
 										Limits: corev1.ResourceList{
@@ -896,6 +896,8 @@ func TestStatefulSetForRack(t *testing.T) {
 											"inherit_errexit",
 											"-c",
 											strings.TrimSpace(`
+printf 'INFO %s - Querying bootstrap status.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+exit_code=0
 /usr/bin/scylla sstable query \
 --system-schema \
 --scylla-data-dir=/var/lib/scylla/data \
@@ -903,7 +905,12 @@ func TestStatefulSetForRack(t *testing.T) {
 --table=local \
 --output-format=json \
 --query="SELECT bootstrapped FROM scylla_sstable.local" \
-/var/lib/scylla/data/system/local-*/*-Data.db >/mnt/shared/bootstrapped.json || touch /mnt/shared/bootstrapped.json
+/var/lib/scylla/data/system/local-*/*-Data.db >'/mnt/shared/sstable-bootstrap-query-result.json' || exit_code=$?
+
+if [ "${exit_code}" -ne 0 ]; then
+  printf 'ERROR %s - Failed to query bootstrap status. Assuming the node requires boostrap.\n' "$( date '+%Y-%m-%d %H:%M:%S,%3N' )" > /dev/stderr
+  echo "[]" >'/mnt/shared/sstable-bootstrap-query-result.json'
+fi
 `),
 										},
 										Resources: corev1.ResourceRequirements{
@@ -937,7 +944,7 @@ func TestStatefulSetForRack(t *testing.T) {
 											"/usr/bin/scylla-operator",
 											"run-bootstrap-barrier",
 											"--service-name=$(SERVICE_NAME)",
-											"--sstable-bootstrapped-query-result-path=/mnt/shared/bootstrapped.json",
+											"--sstable-bootstrapped-query-result-path=/mnt/shared/sstable-bootstrap-query-result.json",
 											"--selector-label-value=basic",
 											"--single-report-allow-non-reporting-host-ids=false",
 											"--loglevel=0",

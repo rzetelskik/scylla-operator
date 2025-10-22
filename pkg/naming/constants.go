@@ -151,6 +151,8 @@ const (
 
 	ScyllaDBIgnitionDonePath = SharedDirName + "/ignition.done"
 
+	ScyllaDBSSTableBootstrapQueryResultPath = SharedDirName + "/sstable-bootstrap-query-result.json"
+
 	DataDir = "/var/lib/scylla"
 
 	ReadinessProbePath         = "/readyz"
