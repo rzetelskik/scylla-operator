@@ -820,13 +820,13 @@ sphinx = ">=1.8"
 
 [[package]]
 name = "sphinx-multiversion-scylla"
-version = "0.3.2"
+version = "0.3.3"
 description = "Add support for multiple versions to sphinx"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "sphinx_multiversion_scylla-0.3.2.tar.gz", hash = "sha256:f415311273228f4f766c36256503da8e2ce01f9d13423f3fcee3160d6284852b"},
+    {file = "sphinx_multiversion_scylla-0.3.3.tar.gz", hash = "sha256:a8fa7f4dc685bdb40a57b4abbe4ab0f15908302de7066c50e9ad234a6500d37f"},
 ]
 
 [package.dependencies]
@@ -1385,4 +1385,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "c27384bc6e09db142abc18d604628695a3745221f59eeab57bff2342ce352a66"
+content-hash = "420034c5a43cb6a687b4fe9442f94389fe3acddfe3b4e4e68bea6c5c9ba7afbb"
