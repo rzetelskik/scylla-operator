@@ -1,0 +1,6 @@
+dependencies:
+- type: olm.package
+  value:
+    packageName: openshift-cert-manager-operator
+    version: "1.17.0"
+  
