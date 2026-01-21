@@ -31,7 +31,7 @@
     {
       "description": "Documentation dependencies should be updated together",
       "matchManagers": ["poetry"],
-      "matchFileNames": ["docs/pyproject.toml"],
+      "matchFileNames": ["docs/pyproject.toml", "docs/poetry.lock"],
       "lockFileMaintenance": {
         "enabled": true
       },
