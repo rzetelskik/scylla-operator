@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["custom.regex", "gomod", "pep621"],
+  "enabledManagers": ["custom.regex", "gomod", "poetry"],
   "schedule": ["before 5am every weekday"],
   "labels": [
     "kind/dependency-bump",
@@ -14,9 +14,6 @@
     "gomodTidy",
     "gomodVendor"
   ],
-  "lockFileMaintenance": {
-    "enabled": true
-  },
   "packageRules": [
     {
       "description": "scylla-manager and scylla-manager-agent must be updated together",
@@ -32,9 +29,12 @@
       "enabled": false
     },
     {
-      "description": "Documentation dependencies",
-      "matchManagers": ["pep621"],
+      "description": "Documentation dependencies should be updated together",
+      "matchManagers": ["poetry"],
       "matchFileNames": ["docs/pyproject.toml"],
+      "lockFileMaintenance": {
+        "enabled": true
+      },
       "groupName": "docs"
     },
     {
