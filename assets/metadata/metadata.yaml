@@ -1,10 +1,10 @@
 # This file contains metadata for the Scylla Operator.
 # It serves as a single source of truth, and its values should propagate to all other places that rely on this information.
 operator:
-  minOpenShiftVersion: 4.19
-  maxOpenShiftVersion: 4.19
-  minKubernetesVersion: 1.30.0
+  minOpenShiftVersion: "4.19"
+  maxOpenShiftVersion: "4.19"
+  minKubernetesVersion: "1.30.0"
 thirdParty:
   prometheusOperator:
-    version: 0.86.1 # Latest compatible with Prometheus version defined in assets/config/config.yaml (https://prometheus-operator.dev/docs/getting-started/compatibility/)
-    namespace: prometheus-operator
+    version: "0.86.1" # Latest compatible with Prometheus version defined in assets/config/config.yaml (https://prometheus-operator.dev/docs/getting-started/compatibility/)
+    namespace: "prometheus-operator"
