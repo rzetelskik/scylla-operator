@@ -5,9 +5,13 @@
   ],
   "enabledManagers": [
     "custom.regex",
+    "git-submodules",
     "gomod",
     "poetry"
   ],
+  "git-submodules": {
+    "enabled": true
+  },
   "schedule": [
     "before 5am on monday"
   ],
@@ -77,6 +81,18 @@
         "docs/pyproject.toml"
       ],
       "enabled": false
+    },
+    {
+      "description": "scylla-monitoring submodule should be updated to latest release every weekday",
+      "matchDatasources": [
+        "git-submodules"
+      ],
+      "matchDepNames": [
+        "submodules/github.com/scylladb/scylla-monitoring"
+      ],
+      "schedule": [
+        "before 5am every weekday"
+      ]
     }
   ],
   "customManagers": [
