@@ -50,7 +50,9 @@ import (
 const (
 	ControllerName = "ScyllaDBDatacenterController"
 
-	artificialDelayForCachesToCatchUp = 10 * time.Second
+	// defaultStatefulSetCachePropagationDelay is the default value for the delay after applying StatefulSet changes
+	// to let informer caches observe the update.
+	defaultStatefulSetCachePropagationDelay = 10 * time.Second
 )
 
 var (
@@ -87,6 +89,15 @@ type Controller struct {
 	handlers *controllerhelpers.Handlers[*scyllav1alpha1.ScyllaDBDatacenter]
 
 	keyGetter crypto.KeyGenerator
+
+	statefulSetCachePropagationDelay time.Duration
+}
+
+type ControllerOptions struct {
+	// StatefulSetCachePropagationDelay overrides the delay after applying StatefulSet changes to let informer caches
+	// observe the update.
+	// Optional: if nil, uses the controller default.
+	StatefulSetCachePropagationDelay *time.Duration
 }
 
 func NewController(
@@ -108,6 +119,7 @@ func NewController(
 	operatorImage string,
 	cqlsIngressPort int,
 	keyGetter crypto.KeyGenerator,
+	options ControllerOptions,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
@@ -160,6 +172,12 @@ func NewController(
 		),
 
 		keyGetter: keyGetter,
+
+		statefulSetCachePropagationDelay: defaultStatefulSetCachePropagationDelay,
+	}
+
+	if options.StatefulSetCachePropagationDelay != nil {
+		sdcc.statefulSetCachePropagationDelay = *options.StatefulSetCachePropagationDelay
 	}
 
 	var err error

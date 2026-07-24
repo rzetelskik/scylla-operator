@@ -344,6 +344,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		o.OperatorImage,
 		o.CQLSIngressPort,
 		keyGenerator,
+		scylladbdatacenter.ControllerOptions{},
 	)
 	if err != nil {
 		return fmt.Errorf("can't create scylladbdatacenter controller: %w", err)
