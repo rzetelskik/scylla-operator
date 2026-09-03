@@ -80,7 +80,7 @@ fi
 # Inform KinD cluster about the local registry.
 temp_kubeconfig="$(mktemp)"
 kind get kubeconfig --name="${CLUSTER_NAME}" > "${temp_kubeconfig}"
-KUBECONFIG="${temp_kubeconfig}" cat <<EOF | kubectl apply -f -
+cat <<EOF | kubectl --kubeconfig="${temp_kubeconfig}" apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
