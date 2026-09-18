@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -15,7 +16,10 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	testcrypto "github.com/scylladb/scylla-operator/pkg/test/crypto"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	corev1listers "k8s.io/client-go/listers/core/v1"
@@ -208,6 +212,8 @@ type managedObjects struct {
 	syncCaches func()
 	// writes counts the creates and updates the manager has issued so far.
 	writes func() int
+	// liveReads counts the reads the manager has made past its caches so far.
+	liveReads func() int
 }
 
 // newTypedCertificateManager builds the manager the way the legacy controllers do: typed clients for the writes and
@@ -228,12 +234,21 @@ func newTypedCertificateManager(t *testing.T, ctx context.Context, keygen ocrypt
 		record.NewFakeRecorder(10),
 	)
 
+	// The test reads the objects from the tracker so that its own reads don't count as the manager's.
 	return cm, managedObjects{
 		getSecret: func(name string) (*corev1.Secret, error) {
-			return kubeClient.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+			obj, err := kubeClient.Tracker().Get(corev1.SchemeGroupVersion.WithResource("secrets"), namespace, name)
+			if err != nil {
+				return nil, err
+			}
+			return obj.(*corev1.Secret), nil
 		},
 		getConfigMap: func(name string) (*corev1.ConfigMap, error) {
-			return kubeClient.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+			obj, err := kubeClient.Tracker().Get(corev1.SchemeGroupVersion.WithResource("configmaps"), namespace, name)
+			if err != nil {
+				return nil, err
+			}
+			return obj.(*corev1.ConfigMap), nil
 		},
 		syncCaches: func() {
 			secrets, err := kubeClient.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
@@ -256,24 +271,33 @@ func newTypedCertificateManager(t *testing.T, ctx context.Context, keygen ocrypt
 			}
 		},
 		writes: func() int {
-			n := 0
-			for _, action := range kubeClient.Actions() {
-				if action.GetVerb() == "create" || action.GetVerb() == "update" {
-					n++
-				}
-			}
-			return n
+			return countActions(kubeClient, "create", "update")
+		},
+		liveReads: func() int {
+			return countActions(kubeClient, "get")
 		},
 	}
 }
 
-// newControlCertificateManager builds the manager the way a controller-runtime reconciler does: one client for the
-// reads and the writes, wrapped in ctrlclient's object controls; the fake client stands in for the live reader too.
+func countActions(kubeClient *fake.Clientset, verbs ...string) int {
+	n := 0
+	for _, action := range kubeClient.Actions() {
+		if slices.Contains(verbs, action.GetVerb()) {
+			n++
+		}
+	}
+	return n
+}
+
+// newControlCertificateManager builds the manager the way a controller-runtime reconciler does: one cache-backed
+// client for the writes and the cached reads, and the API reader for the live ones. The cached client lags: it misses
+// everything written since the last syncCaches, the way an informer cache misses what its watch has not delivered yet.
 func newControlCertificateManager(t *testing.T, ctx context.Context, keygen ocrypto.KeyGenerator, namespace string) (*CertificateManager, managedObjects) {
 	t.Helper()
 
-	writes := 0
-	c := ctrlfake.NewClientBuilder().WithScheme(scheme.Scheme).WithInterceptorFuncs(interceptor.Funcs{
+	writes, liveReads := 0, 0
+	synced := map[client.ObjectKey]bool{}
+	live := ctrlfake.NewClientBuilder().WithScheme(scheme.Scheme).WithInterceptorFuncs(interceptor.Funcs{
 		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 			writes++
 			return c.Create(ctx, obj, opts...)
@@ -283,23 +307,54 @@ func newControlCertificateManager(t *testing.T, ctx context.Context, keygen ocry
 			return c.Update(ctx, obj, opts...)
 		},
 	}).Build()
+	cached := interceptor.NewClient(live, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if !synced[key] {
+				gvk, err := c.GroupVersionKindFor(obj)
+				if err != nil {
+					return err
+				}
+				return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, key.Name)
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	})
+	reader := interceptor.NewClient(live, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			liveReads++
+			return c.Get(ctx, key, obj, opts...)
+		},
+	})
 
 	cm := NewCertificateManagerWithControl(
 		keygen,
-		ctrlclient.NewObjectControl[corev1.Secret](ctx, c, c),
-		ctrlclient.NewObjectControl[corev1.ConfigMap](ctx, c, c),
+		ctrlclient.NewObjectControl[corev1.Secret](ctx, cached, reader),
+		ctrlclient.NewObjectControl[corev1.ConfigMap](ctx, cached, reader),
 		record.NewFakeRecorder(10),
 	)
 
 	return cm, managedObjects{
 		getSecret: func(name string) (*corev1.Secret, error) {
-			return ctrlclient.Get[corev1.Secret](ctx, c, namespace, name)
+			return ctrlclient.Get[corev1.Secret](ctx, live, namespace, name)
 		},
 		getConfigMap: func(name string) (*corev1.ConfigMap, error) {
-			return ctrlclient.Get[corev1.ConfigMap](ctx, c, namespace, name)
+			return ctrlclient.Get[corev1.ConfigMap](ctx, live, namespace, name)
 		},
-		syncCaches: func() {},
-		writes:     func() int { return writes },
+		syncCaches: func() {
+			for _, list := range []client.ObjectList{&corev1.SecretList{}, &corev1.ConfigMapList{}} {
+				if err := live.List(ctx, list, client.InNamespace(namespace)); err != nil {
+					t.Fatal(err)
+				}
+				if err := meta.EachListItem(list, func(obj runtime.Object) error {
+					synced[client.ObjectKeyFromObject(obj.(client.Object))] = true
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		},
+		writes:    func() int { return writes },
+		liveReads: func() int { return liveReads },
 	}
 }
 
@@ -367,10 +422,14 @@ func TestCertificateManager_ManageCertificates(t *testing.T) {
 			now := time.Now()
 			nowFunc := func() time.Time { return now }
 
+			// Every run is handed no existing objects, as a reconciliation whose lister snapshot predates the previous
+			// run's writes would be. It has to find them live rather than mint a new CA.
+			tryManage := func() error {
+				return cm.ManageCertificates(ctx, nowFunc, controller, controllerGVK, caConfig, caBundleConfig, certConfigs, map[string]*corev1.Secret{}, map[string]*corev1.ConfigMap{})
+			}
 			manage := func() {
 				t.Helper()
-				err := cm.ManageCertificates(ctx, nowFunc, controller, controllerGVK, caConfig, caBundleConfig, certConfigs, map[string]*corev1.Secret{}, map[string]*corev1.ConfigMap{})
-				if err != nil {
+				if err := tryManage(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -407,12 +466,33 @@ func TestCertificateManager_ManageCertificates(t *testing.T) {
 			if writes := objects.writes(); writes != len(first) {
 				t.Errorf("expected the first run to issue %d writes, got %d", len(first), writes)
 			}
+			if liveReads := objects.liveReads(); liveReads != len(first) {
+				t.Errorf("expected the first run to read %d objects live, got %d", len(first), liveReads)
+			}
+
+			// Before the caches catch up, the live read finds the CA and the apply's cached read doesn't, so the apply
+			// runs into the CA it can't see and the run fails on it, without a new CA having been minted. That is the
+			// OPERATOR-129 window: a cache miss here used to regenerate the CA.
+			err = tryManage()
+			if !apierrors.IsAlreadyExists(err) {
+				t.Fatalf("expected the run before the caches sync to fail on the existing CA, got %v", err)
+			}
+			if liveReads := objects.liveReads(); liveReads != len(first)+1 {
+				t.Errorf("expected the run before the caches sync to read the CA live, got %d reads in total", liveReads)
+			}
+			if diff := cmp.Diff(first, snapshot()); diff != "" {
+				t.Errorf("expected the run before the caches sync to leave the objects alone (-first +after):\n%s", diff)
+			}
+			writesBeforeSync := objects.writes()
 
 			objects.syncCaches()
 			manage()
 			second := snapshot()
-			if writes := objects.writes(); writes != len(first) {
-				t.Errorf("expected the second run to issue no writes, got %d in total", writes)
+			if writes := objects.writes(); writes != writesBeforeSync {
+				t.Errorf("expected the run after the caches sync to issue no writes, got %d in total", writes-writesBeforeSync)
+			}
+			if liveReads := objects.liveReads(); liveReads != 2*len(first)+1 {
+				t.Errorf("expected the run after the caches sync to read %d objects live, got %d in total", len(first), liveReads)
 			}
 			if diff := cmp.Diff(first, second); diff != "" {
 				t.Errorf("expected the second run to leave the objects alone (-first +second):\n%s", diff)
