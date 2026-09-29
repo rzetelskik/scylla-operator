@@ -1,7 +1,8 @@
 name: E2E jobs
 
 # Every e2e job, defined once for all the workflows that run them. Builds the operator image from the ref under test
-# and runs the selected jobs against it. The callers select the jobs by their ids.
+# and runs the selected jobs against it. The callers select the jobs by their ids, which the `e2e/<job>` labels on PRs
+# refer to as well.
 on:
   workflow_call:
     inputs:
@@ -127,7 +128,9 @@ jobs:
     secrets:
       registry-auth-json: ${{ secrets.registry-auth-json }}
 
-  # An empty matrix is an error, hence the `if`.
+  # Every job gets a concurrency group of its own, so that a new commit on a PR cancels the job's run on the old one,
+  # while the other jobs keep running. Outside PRs every run gets its own group. An empty matrix is an error, hence the
+  # `if`.
   gke:
     needs:
     - plan
@@ -138,6 +141,9 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.gke) }}
     name: ${{ matrix.id }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.id }}
+      cancel-in-progress: true
     uses: ./.github/workflows/_e2e-gke.yaml
     with:
       name: e2e-${{ matrix.id }}
@@ -164,6 +170,9 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.oke) }}
     name: ${{ matrix.id }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.id }}
+      cancel-in-progress: true
     uses: ./.github/workflows/_e2e-oke.yaml
     with:
       name: e2e-${{ matrix.id }}
