@@ -30,6 +30,37 @@ jobs:
       - name: Verify commit messages
         run: ./hack/.ci/verify-commits.sh "${{ github.event.pull_request.base.sha }}"
 
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # A file counts only if it matches every pattern, so the e2e suites are skipped when a PR changes nothing
+          # but the paths negated below.
+          predicate-quantifier: every
+          filters: |
+            e2e:
+              - '**'
+              - '!docs/**'
+              - '!enhancements/**'
+              - '!**/*.md'
+              - '!renovate.json'
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    uses: ./.github/workflows/_e2e-jobs.yaml
+    with:
+      jobs: '["gke-parallel", "gke-parallel-clusterip", "gke-serial"]'
+    secrets:
+      registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
+      ci-provisioners-kubeconfig: ${{ secrets.CI_PROVISIONERS_KUBECONFIG }}
+
   # The merge automation gates on a fixed set of contexts it is configured with, so individual GitHub Actions
   # checks are invisible to it. This aggregate is the single context it can be told to require once these jobs
   # have matured, which keeps wiring further jobs into the merge gate a one-line change here.
@@ -38,6 +69,8 @@ jobs:
     needs:
     - ci
     - verify-commits
+    - changes
+    - e2e
     if: always()
     steps:
     - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
