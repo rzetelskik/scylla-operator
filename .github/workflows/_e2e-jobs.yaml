@@ -57,6 +57,20 @@ jobs:
             "object-storage": true
           },
           {
+            "id": "gke-parallel-clusterip",
+            "suite": "scylla-operator/conformance/parallel",
+            "object-storage": true,
+            "node-service-type": "ClusterIP",
+            "nodes-broadcast-address-type": "ServiceClusterIP",
+            "clients-broadcast-address-type": "ServiceClusterIP"
+          },
+          {
+            "id": "gke-parallel-ipv6",
+            "suite": "scylla-operator/conformance/parallel-ipv6",
+            "object-storage": true,
+            "dual-stack": true
+          },
+          {
             "id": "gke-serial",
             "suite": "scylla-operator/conformance/serial",
             "cluster-manifest": "./hack/.ci/manifests/ci-clusters/gke-serial.yaml",
