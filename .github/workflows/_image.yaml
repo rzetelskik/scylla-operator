@@ -1,12 +1,16 @@
 name: Image
 
-# Builds the operator image from the checked out ref, natively on amd64 and arm64 runners, and publishes it under a
-# caller-supplied tag as a manifest list. Outputs a digest-pinned reference to it.
+# Builds the operator image from the checked out ref, natively on a runner of each of the requested architectures, and
+# publishes it under a caller-supplied tag as a manifest list. Outputs a digest-pinned reference to it.
 on:
   workflow_call:
     inputs:
       image-tag:
         description: Tag to publish the manifest list under, in the quay.io/scylladb-dev/ci repository.
+        required: true
+        type: string
+      architectures:
+        description: JSON list of the architectures to build the image for, out of `amd64` and `arm64`.
         required: true
         type: string
     outputs:
@@ -36,12 +40,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-        - arch: amd64
-          runner: ubuntu-24.04
-        - arch: arm64
-          runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+        arch: ${{ fromJSON(inputs.architectures) }}
+    # The runner building each architecture natively. An architecture missing here gets no runner and fails the leg.
+    runs-on: ${{ fromJSON('{"amd64":"ubuntu-24.04","arm64":"ubuntu-24.04-arm"}')[matrix.arch] }}
     timeout-minutes: 15
     steps:
     - name: Checkout
@@ -135,6 +136,7 @@ jobs:
       env:
         IMAGE_TAG: ${{ inputs.image-tag }}
         REVISION: ${{ github.sha }}
+        ARCHITECTURES: ${{ inputs.architectures }}
       run: |
         set -euExo pipefail
         shopt -s inherit_errexit
@@ -153,9 +155,9 @@ jobs:
 
         # A list missing an architecture would only surface once the pods crash-loop on its nodes.
         manifest="$( docker buildx imagetools inspect --raw "${image_ref}" )"
-        for arch in amd64 arm64; do
-          jq -e --arg arch "${arch}" 'any(.manifests[]; .platform.os == "linux" and .platform.architecture == $arch)' <<< "${manifest}"
-        done
+        jq -e --argjson architectures "${ARCHITECTURES}" '
+          $architectures - [.manifests[].platform | select(.os == "linux") | .architecture] == []
+        ' <<< "${manifest}"
 
         digest="$( docker buildx imagetools inspect --format='{{ .Manifest.Digest }}' "${image_ref}" )"
         echo "image-ref=${IMAGE_REPO_REF}@${digest}" >> "${GITHUB_OUTPUT}"

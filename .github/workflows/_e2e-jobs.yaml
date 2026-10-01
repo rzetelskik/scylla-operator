@@ -29,6 +29,7 @@ jobs:
     outputs:
       gke: ${{ steps.plan.outputs.gke }}
       oke: ${{ steps.plan.outputs.oke }}
+      architectures: ${{ steps.plan.outputs.architectures }}
     steps:
     - id: plan
       shell: bash
@@ -47,6 +48,8 @@ jobs:
           "nodes-broadcast-address-type": "PodIP",
           "clients-broadcast-address-type": "PodIP"
         }'
+        # The jobs run on amd64 nodes unless their entry sets `arch`, which is only for the image to build and isn't
+        # passed on to the workflow running them.
         # The serial jobs run without a NodeConfig, so without a local storage class either, and ScyllaDB storage falls
         # back to the cluster default.
         gke='[
@@ -72,6 +75,7 @@ jobs:
           },
           {
             "id": "gke-arm64-parallel",
+            "arch": "arm64",
             "suite": "scylla-operator/conformance/parallel",
             "cluster-manifest": "./hack/.ci/manifests/ci-clusters/gke-arm64.yaml",
             "object-storage": true,
@@ -79,6 +83,7 @@ jobs:
           },
           {
             "id": "gke-arm64-serial",
+            "arch": "arm64",
             "suite": "scylla-operator/conformance/serial",
             "cluster-manifest": "./hack/.ci/manifests/ci-clusters/gke-arm64-serial.yaml",
             "nodeconfig-path": "",
@@ -103,17 +108,24 @@ jobs:
         ]'
 
         select='(env.JOBS | fromjson) as $jobs | map(select(.id as $id | $jobs | any(. == "all" or . == $id)))'
+        gke="$( jq -c --argjson defaults "${gke_defaults}" "${select} | map(\$defaults + .)" <<< "${gke}" )"
+        oke="$( jq -c "${select}" <<< "${oke}" )"
         {
-          echo "gke=$( jq -c --argjson defaults "${gke_defaults}" "${select} | map(\$defaults + .)" <<< "${gke}" )"
-          echo "oke=$( jq -c "${select}" <<< "${oke}" )"
+          echo "gke=${gke}"
+          echo "oke=${oke}"
+          echo "architectures=$( jq -nc --argjson gke "${gke}" --argjson oke "${oke}" '$gke + $oke | map(.arch // "amd64") | unique' )"
         } >> "${GITHUB_OUTPUT}"
 
   # On a PR from a fork this fails for lack of secrets, and so does the caller, rather than the suites being skipped
   # and counted as passed.
   image:
+    needs: plan
+    # An empty matrix is an error.
+    if: needs.plan.outputs.architectures != '[]'
     uses: ./.github/workflows/_image.yaml
     with:
       image-tag: scylla-operator-${{ github.run_id }}
+      architectures: ${{ needs.plan.outputs.architectures }}
     secrets:
       registry-auth-json: ${{ secrets.registry-auth-json }}
 
