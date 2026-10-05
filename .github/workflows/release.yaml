@@ -1,16 +1,16 @@
 name: Release
 
 # Releases the dispatched ref as the given version. Builds the operator image, gates it on the e2e suites, pushes the
-# version tag, publishes the image to the production repositories and creates the GitHub release, in that order: the
-# tag is the output of the gate, not its trigger, and nothing is published for a version without one. Lives on every
-# release branch and is dispatched on the branch being released.
+# version tag, publishes the image to the production repositories, creates the GitHub release and submits the OLM bundle
+# for certification, in that order: the tag is the output of the gate, not its trigger, and nothing is published for a
+# version without one. Lives on every release branch and is dispatched on the branch being released.
 #
 # Version tags are immutable, so a release that failed after its tag is finished by dispatching it again with the same
-# version. The tag records the image the gate tested, and the run publishes that image instead of building and gating
-# a new one, whose digest would differ. The publishing steps are safe to repeat. A redispatch can run from any ref,
-# master included, so a fix to the workflow applies to an existing tag: the ref only supplies the workflow, and
-# everything published comes from the tag. A job that publishes files from the repository after the tag has to check
-# out the tag rather than `github.sha`.
+# version. The tag records the image the gate tested, and the run publishes that image instead of building and gating a
+# new one, whose digest would differ. The publishing steps are safe to repeat, except the certification once its PR is
+# open. A redispatch can run from any ref, master included, so a fix to the workflow applies to an existing tag: the ref
+# only supplies the workflow, and everything published comes from the tag. A job that publishes files from the
+# repository after the tag has to check out the tag rather than `github.sha`.
 on:
   workflow_dispatch:
     inputs:
@@ -246,3 +246,71 @@ jobs:
         --notes-file "${notes_file}" \
         --prerelease="${PRERELEASE}" \
         --latest="${LATEST}"
+
+  # Red Hat's pipeline builds the bundle from the manifests pushed to the certified-operators fork, and they pin the
+  # operator image by its published tag, so this runs once `promote` is done. A redispatch runs it again, which fails
+  # loudly if the PR for this version is already open or merged.
+  certify-olm-bundle:
+    needs:
+    - plan-release
+    - github-release
+    if: ${{ !cancelled() && !failure() && needs.github-release.result == 'success' }}
+    runs-on: hosted-runners-standard-pool
+    container:
+      image: quay.io/scylladb/scylla-operator-images:kube-tools
+    timeout-minutes: 180
+    # See _ci-jobs.yaml: the container image declares no USER, so git needs safe.directory for the checkout.
+    env:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: "*"
+    steps:
+    - name: Checkout the release
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ needs.plan-release.outputs.tag }}
+        path: release
+        # postprocess-bundle.sh lists the release tags to compute spec.replaces, and a shallow checkout has none.
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Checkout the tooling
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        path: tooling
+        persist-credentials: false
+
+    - name: Materialize the credentials
+      id: credentials
+      env:
+        CLUSTER_KUBECONFIG: ${{ secrets.OPENSHIFT_CERTIFICATION_CLUSTER_KUBECONFIG }}
+        CD_BOT_SSH_KEY: ${{ secrets.SCYLLADB_OPERATOR_CD_BOT_SSH }}
+      run: |
+        set -euEo pipefail
+        shopt -s inherit_errexit
+
+        if [[ -z "${CLUSTER_KUBECONFIG}" ]]; then
+          echo '::error::OPENSHIFT_CERTIFICATION_CLUSTER_KUBECONFIG must not be empty.'
+          exit 1
+        fi
+
+        if [[ -z "${CD_BOT_SSH_KEY}" ]]; then
+          echo '::error::SCYLLADB_OPERATOR_CD_BOT_SSH must not be empty.'
+          exit 1
+        fi
+
+        kubeconfig="${RUNNER_TEMP}/certification-cluster-kubeconfig"
+        ssh_key="${RUNNER_TEMP}/cd-bot-ssh-key"
+        ( umask 077; printf '%s\n' "${CLUSTER_KUBECONFIG}" > "${kubeconfig}"; printf '%s\n' "${CD_BOT_SSH_KEY}" > "${ssh_key}" )
+        echo "kubeconfig=${kubeconfig}" >> "${GITHUB_OUTPUT}"
+        echo "ssh-key=${ssh_key}" >> "${GITHUB_OUTPUT}"
+
+    - name: Certify the bundle
+      env:
+        TAG: ${{ needs.plan-release.outputs.tag }}
+        SUBMIT: "true"
+        KUBECONFIG: ${{ steps.credentials.outputs.kubeconfig }}
+        SSH_KEY: ${{ steps.credentials.outputs.ssh-key }}
+      # The script takes the bundle from the working directory, which is the release checkout.
+      working-directory: release
+      run: ../tooling/hack/.ci/olm/certify-bundle.sh "${TAG}" "${SSH_KEY}"
