@@ -1,0 +1,84 @@
+name: Certify OLM bundle
+
+# Submits the OLM bundle of a release tag to the Red Hat certification pipeline running on our OKD cluster.
+# Dispatch runs from master against any existing tag: the workflow file comes from the dispatched ref and the
+# bundle from the tag. Dispatch defaults to a dry run that pushes to the certified-operators fork and runs the
+# pipeline without opening the upstream PR.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to certify (e.g. v1.20.1 or v1.20.1-rc.1)'
+        required: true
+        type: string
+      submit:
+        description: 'Open the PR in redhat-openshift-ecosystem/certified-operators'
+        required: false
+        type: boolean
+        default: false
+      target-branch:
+        description: 'Branch to push to in the certified-operators fork (defaults to scylladb-operator-<version>)'
+        required: false
+        type: string
+        default: ''
+
+# Two runs for one tag would race on the same fork branch and pipeline workspace.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+# See _ci-jobs.yaml: the container image declares no USER, so git needs safe.directory for the checkout.
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: "*"
+
+jobs:
+  certify:
+    name: certify
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/scylladb/scylla-operator-images:kube-tools
+    timeout-minutes: 180
+    environment: openshift-certification
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Materialize the credentials
+        id: credentials
+        env:
+          CLUSTER_KUBECONFIG: ${{ secrets.OPENSHIFT_CERTIFICATION_CLUSTER_KUBECONFIG }}
+          CD_BOT_SSH_KEY: ${{ secrets.OPENSHIFT_CERTIFICATION_CD_BOT_SSH_KEY }}
+        run: |
+          set -euEo pipefail
+          shopt -s inherit_errexit
+
+          # Otherwise the missing secret only surfaces as an unrelated tkn or ssh error further down.
+          if [[ -z "${CLUSTER_KUBECONFIG}" || -z "${CD_BOT_SSH_KEY}" ]]; then
+            echo '::error::The certification cluster kubeconfig or the cd-bot SSH key is empty. Both are seeded into the openshift-certification environment by the ci-infra seed script.'
+            exit 1
+          fi
+
+          kubeconfig="${RUNNER_TEMP}/certification-cluster-kubeconfig"
+          ssh_key="${RUNNER_TEMP}/cd-bot-ssh-key"
+          ( umask 077; printf '%s\n' "${CLUSTER_KUBECONFIG}" > "${kubeconfig}"; printf '%s\n' "${CD_BOT_SSH_KEY}" > "${ssh_key}" )
+          echo "kubeconfig=${kubeconfig}" >> "${GITHUB_OUTPUT}"
+          echo "ssh-key=${ssh_key}" >> "${GITHUB_OUTPUT}"
+
+      - name: Certify the bundle
+        env:
+          TAG: ${{ inputs.tag }}
+          SUBMIT: ${{ inputs.submit }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          KUBECONFIG: ${{ steps.credentials.outputs.kubeconfig }}
+          SSH_KEY: ${{ steps.credentials.outputs.ssh-key }}
+        run: ./hack/.ci/olm/certify-bundle.sh "${TAG}" "${SSH_KEY}"
