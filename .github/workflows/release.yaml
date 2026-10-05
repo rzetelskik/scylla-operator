@@ -1,16 +1,16 @@
 name: Release
 
 # Releases the dispatched ref as the given version. Builds the operator image, gates it on the e2e suites, pushes the
-# version tag, publishes the image to the production repositories and creates the GitHub release, in that order: the
-# tag is the output of the gate, not its trigger, and nothing is published for a version without one. Lives on every
-# release branch and is dispatched on the branch being released.
+# version tag, publishes the image to the production repositories, creates the GitHub release and submits the OLM bundle
+# for certification, in that order: the tag is the output of the gate, not its trigger, and nothing is published for a
+# version without one. Lives on every release branch and is dispatched on the branch being released.
 #
 # Version tags are immutable, so a release that failed after its tag is finished by dispatching it again with the same
-# version. The tag records the image the gate tested, and the run publishes that image instead of building and gating
-# a new one, whose digest would differ. The publishing steps are safe to repeat. A redispatch can run from any ref,
-# master included, so a fix to the workflow applies to an existing tag: the ref only supplies the workflow, and
-# everything published comes from the tag. A job that publishes files from the repository after the tag has to check
-# out the tag rather than `github.sha`.
+# version. The tag records the image the gate tested, and the run publishes that image instead of building and gating a
+# new one, whose digest would differ. The publishing steps are safe to repeat, except the certification once its PR is
+# open. A redispatch can run from any ref, master included, so a fix to the workflow applies to an existing tag: the ref
+# only supplies the workflow, and everything published comes from the tag. A job that publishes files from the
+# repository after the tag has to check out the tag rather than `github.sha`.
 on:
   workflow_dispatch:
     inputs:
@@ -246,3 +246,16 @@ jobs:
         --notes-file "${notes_file}" \
         --prerelease="${PRERELEASE}" \
         --latest="${LATEST}"
+
+  # The bundle pins the operator image by its published tag, so it can only be built once `promote` is done. A
+  # redispatch reruns it, which fails loudly if the PR for this version is already open or merged.
+  certify-olm-bundle:
+    needs:
+    - plan-release
+    - github-release
+    if: ${{ !cancelled() && !failure() && needs.github-release.result == 'success' }}
+    uses: ./.github/workflows/_certify-olm-bundle.yaml
+    with:
+      tag: ${{ needs.plan-release.outputs.tag }}
+      submit: true
+    secrets: inherit
