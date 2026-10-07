@@ -1,0 +1,60 @@
+name: Cut release branch
+
+# Creates the release branch of a minor version from the dispatched master commit. Relies on the App being a bypass
+# actor of the ruleset restricting who can create release branches.
+on:
+  workflow_dispatch:
+    inputs:
+      minor:
+        description: Minor version to cut a branch for, e.g. `1.23`.
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: release
+    steps:
+    - name: Validate the input
+      env:
+        MINOR: ${{ inputs.minor }}
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        if [[ "${GITHUB_REF}" != "refs/heads/master" ]]; then
+          echo "::error::Release branches are cut from master, not from ${GITHUB_REF}."
+          exit 1
+        fi
+        if [[ ! "${MINOR}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::'${MINOR}' is not MAJOR.MINOR."
+          exit 1
+        fi
+
+    - name: Create a GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        permission-contents: write
+
+    - name: Create the branch
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        MINOR: ${{ inputs.minor }}
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+        --raw-field ref="refs/heads/v${MINOR}" \
+        --raw-field sha="${GITHUB_SHA}"

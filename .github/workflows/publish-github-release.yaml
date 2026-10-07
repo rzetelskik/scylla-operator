@@ -1,0 +1,74 @@
+name: Publish GitHub release
+
+# Creates the GitHub release of a version once its operator image is published. Takes the tag as an input instead of
+# running on it, so it can be dispatched again from the release branch after a fix.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag, e.g. `v1.23.0`.
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Verify the published image
+      uses: ./.github/actions/verify-published-image
+      with:
+        tag: ${{ inputs.tag }}
+
+    # A release is the latest if it's the highest GA version tagged so far. Prereleases link to the top of the
+    # changelog, since their section doesn't exist yet. The anchor of a version's section is the version without dots,
+    # e.g. 1201 for 1.20.1.
+    - name: Create the release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ inputs.tag }}
+        REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null; then
+          echo "Release ${TAG} already exists."
+          exit 0
+        fi
+
+        version="${TAG#v}"
+        prerelease="$( [[ "${version}" == *-* ]] && echo true || echo false )"
+        latest=false
+        changelog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md"
+        if [[ "${prerelease}" == "false" ]]; then
+          changelog_url+="#${version//./}"
+          highest_ga_tag="$( git ls-remote --tags --refs "${REPO_URL}" 'v*' | sed -e 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort --version-sort | tail -n 1 )"
+          if [[ "${highest_ga_tag}" == "${TAG}" ]]; then
+            latest=true
+          fi
+        fi
+        notes_file="${RUNNER_TEMP}/notes.md"
+        printf '## Docker Image\n\n```\ndocker.io/scylladb/scylla-operator:%s\n```\n\n## Changelog\n\n%s\n' "${version}" "${changelog_url}" > "${notes_file}"
+
+        gh release create "${TAG}" \
+        --repo "${GITHUB_REPOSITORY}" \
+        --verify-tag \
+        --title "${TAG}" \
+        --notes-file "${notes_file}" \
+        --prerelease="${prerelease}" \
+        --latest="${latest}"
