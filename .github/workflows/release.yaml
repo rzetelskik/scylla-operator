@@ -1,0 +1,225 @@
+name: Release
+
+# Releases the dispatched ref as the given version. Builds the operator image, gates it on the e2e suites, publishes
+# it to the production repositories, pushes the version tag and creates the GitHub release, in that order: the tag is
+# the output of the gate, not its trigger, and the steps after it expect the image to exist. Lives on every release
+# branch and is dispatched on the branch being released.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the `v` prefix, e.g. `1.23.0` or `1.23.0-rc.0`.
+        required: true
+        type: string
+
+# One release at a time across all branches. Which rolling tags a version gets depends on the tags released before
+# it, so two releases in flight could both decide they're the latest.
+concurrency:
+  group: ${{ github.workflow }}
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  # Rejects a malformed or already released version before the hours the gate takes, and decides what the release
+  # publishes.
+  parse-version:
+    runs-on: hosted-runners-standard-pool
+    container:
+      image: quay.io/scylladb/scylla-operator-images:kube-tools
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.parse.outputs.tag }}
+      prerelease: ${{ steps.parse.outputs.prerelease }}
+      latest: ${{ steps.parse.outputs.latest }}
+      image-tags: ${{ steps.parse.outputs.image-tags }}
+    steps:
+    # `X.Y` follows the highest GA patch of its minor and `latest` the highest GA overall, so a patch of an older minor
+    # can't move `latest` backwards. Prereleases get neither.
+    - name: Parse the version
+      id: parse
+      env:
+        VERSION: ${{ inputs.version }}
+        REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        readonly semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+        if [[ ! "${VERSION}" =~ ${semver_pattern} ]]; then
+          echo "::error::Version '${VERSION}' is not MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-PRERELEASE."
+          exit 1
+        fi
+        prerelease="$( [[ -n "${BASH_REMATCH[1]}" ]] && echo true || echo false )"
+
+        tag="v${VERSION}"
+        released_tags="$( git ls-remote --tags --refs "${REPO_URL}" 'v*' | sed -e 's#.*refs/tags/##' )"
+        if grep -qxF "${tag}" <<< "${released_tags}"; then
+          echo "::error::Tag '${tag}' already exists."
+          exit 1
+        fi
+
+        image_tags=( "${VERSION}" )
+        latest=false
+        if [[ "${prerelease}" == "false" ]]; then
+          ga_tags="$( { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' <<< "${released_tags}" || true; echo "${tag}"; } | sort --version-sort )"
+          minor="${VERSION%.*}"
+          if [[ "$( grep -F "v${minor}." <<< "${ga_tags}" | tail -n 1 )" == "${tag}" ]]; then
+            image_tags+=( "${minor}" )
+          fi
+          if [[ "$( tail -n 1 <<< "${ga_tags}" )" == "${tag}" ]]; then
+            image_tags+=( "latest" )
+            latest=true
+          fi
+        fi
+
+        {
+          echo "tag=${tag}"
+          echo "prerelease=${prerelease}"
+          echo "latest=${latest}"
+          echo "image-tags=$( printf '%s\n' "${image_tags[@]}" | jq -Rnc '[inputs]' )"
+        } >> "${GITHUB_OUTPUT}"
+
+  image:
+    needs: parse-version
+    uses: ./.github/workflows/_image.yaml
+    with:
+      image-tag: scylla-operator-${{ github.run_id }}
+    secrets:
+      registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
+
+  # The release gate of OPERATOR-390. The list is fixed on purpose: a gate that can be narrowed at dispatch isn't one.
+  e2e:
+    needs: image
+    uses: ./.github/workflows/_e2e-jobs.yaml
+    with:
+      image-ref: ${{ needs.image.outputs.image-ref }}
+      jobs: '["gke-parallel", "gke-serial", "gke-arm64-parallel", "gke-arm64-serial", "gke-multi-dc-parallel", "oke-parallel", "oke-serial"]'
+    secrets:
+      ci-provisioners-kubeconfig: ${{ secrets.CI_PROVISIONERS_KUBECONFIG }}
+
+  # Copies the image the gate ran against, so what was tested is what ships.
+  promote:
+    needs:
+    - parse-version
+    - image
+    - e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        image-repo-ref:
+        - quay.io/scylladb/scylla-operator
+        - docker.io/scylladb/scylla-operator
+    name: promote (${{ matrix.image-repo-ref }})
+    runs-on: hosted-runners-standard-pool
+    container:
+      image: quay.io/scylladb/scylla-operator-images:kube-tools
+    timeout-minutes: 30
+    steps:
+    # skopeo reads one auth file, so the per-registry secrets are merged into it.
+    - name: Write registry auth file
+      env:
+        QUAY_AUTH_JSON: ${{ secrets.QUAY_SCYLLADB_PUBLISHER_CREDS }}
+        DOCKERHUB_AUTH_JSON: ${{ secrets.DOCKERHUB_SCYLLADB_PUBLISHER_CREDS }}
+      run: |
+        set -euo pipefail
+        shopt -s inherit_errexit
+
+        umask 077
+        jq -n '[env.QUAY_AUTH_JSON, env.DOCKERHUB_AUTH_JSON | fromjson | .auths] | {auths: add}' > "${RUNNER_TEMP}/auth.json"
+        echo "REGISTRY_AUTH_FILE=${RUNNER_TEMP}/auth.json" >> "${GITHUB_ENV}"
+
+    # --preserve-digests fails the copy rather than letting skopeo rewrite a manifest into a different digest.
+    - name: Copy the image
+      env:
+        SOURCE_IMAGE_REF: ${{ needs.image.outputs.image-ref }}
+        IMAGE_REPO_REF: ${{ matrix.image-repo-ref }}
+        IMAGE_TAGS: ${{ needs.parse-version.outputs.image-tags }}
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        for image_tag in $( jq -r '.[]' <<< "${IMAGE_TAGS}" ); do
+          skopeo copy --all --preserve-digests "docker://${SOURCE_IMAGE_REF}" "docker://${IMAGE_REPO_REF}:${image_tag}"
+        done
+
+  # Runs as a GitHub App, which can bypass the version tag ruleset, and unlike the workflow's own token, the release it
+  # creates triggers the workflows that run on release.
+  github-release:
+    needs:
+    - parse-version
+    - promote
+    runs-on: hosted-runners-standard-pool
+    container:
+      image: quay.io/scylladb/scylla-operator-images:kube-tools
+    timeout-minutes: 5
+    steps:
+    - name: Create a GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ secrets.RELEASE_GH_BOT_CLIENT_ID }}
+        private-key: ${{ secrets.RELEASE_GH_BOT_APP_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+
+    - name: Push the tag
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        TAG: ${{ needs.parse-version.outputs.tag }}
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        github_api() {
+          curl --fail-with-body --silent --show-error \
+          --header "Authorization: Bearer ${GH_TOKEN}" \
+          --header 'Accept: application/vnd.github+json' \
+          --header 'X-GitHub-Api-Version: 2022-11-28' \
+          --request POST --data @- \
+          "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/${1}"
+        }
+
+        tag_object_sha="$(
+          jq -n --arg tag "${TAG}" --arg sha "${GITHUB_SHA}" '{tag: $tag, message: $tag, object: $sha, type: "commit"}' |
+          github_api git/tags |
+          jq -r .sha
+        )"
+        jq -n --arg ref "refs/tags/${TAG}" --arg sha "${tag_object_sha}" '{ref: $ref, sha: $sha}' | github_api git/refs
+
+    # Prereleases link to the top of the changelog, since their section doesn't exist yet. The anchor of a version's
+    # section is the version without dots, e.g. 1201 for 1.20.1.
+    - name: Create the release
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        VERSION: ${{ inputs.version }}
+        TAG: ${{ needs.parse-version.outputs.tag }}
+        PRERELEASE: ${{ needs.parse-version.outputs.prerelease }}
+        LATEST: ${{ needs.parse-version.outputs.latest }}
+      run: |
+        set -euExo pipefail
+        shopt -s inherit_errexit
+
+        changelog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md"
+        if [[ "${PRERELEASE}" == "false" ]]; then
+          changelog_url+="#${VERSION//./}"
+        fi
+        body="$( printf '## Docker Image\n\n```\ndocker.io/scylladb/scylla-operator:%s\n```\n\n## Changelog\n\n%s\n' "${VERSION}" "${changelog_url}" )"
+
+        jq -n \
+        --arg tag "${TAG}" \
+        --arg body "${body}" \
+        --argjson prerelease "${PRERELEASE}" \
+        --arg latest "${LATEST}" \
+        '{tag_name: $tag, name: $tag, body: $body, prerelease: $prerelease, make_latest: $latest}' |
+        curl --fail-with-body --silent --show-error \
+        --header "Authorization: Bearer ${GH_TOKEN}" \
+        --header 'Accept: application/vnd.github+json' \
+        --header 'X-GitHub-Api-Version: 2022-11-28' \
+        --request POST --data @- \
+        "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases"
