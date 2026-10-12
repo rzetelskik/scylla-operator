@@ -17,6 +17,11 @@ on:
         description: Version to release, without the `v` prefix, e.g. `1.23.0` or `1.23.0-rc.0`.
         required: true
         type: string
+      fail-gate:
+        description: 'DROP: fail the stubbed gate.'
+        required: false
+        type: boolean
+        default: false
 
 # One release at a time across all branches. Which rolling tags a version gets depends on the tags released before
 # it, so two releases in flight could both decide they're the latest. GitHub keeps one more run pending, so a third
@@ -34,7 +39,7 @@ permissions:
 env:
   # Repository the tested image is pushed to, and the one a redispatch copies it from. The tag records only the digest,
   # which is the same in every repository the image is copied to.
-  DEV_IMAGE_REPO_REF: &dev-image-repo-ref quay.io/scylladb-dev/ci
+  DEV_IMAGE_REPO_REF: &dev-image-repo-ref quay.io/rzetelskik_scylladb/ci
 
 jobs:
   # Rejects a malformed version before anything is built or tested, decides what the release publishes, and for a
@@ -74,37 +79,20 @@ jobs:
     secrets:
       registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
 
-  olm:
-    needs: image
-    uses: ./.github/workflows/_olm.yaml
-    with:
-      image-ref: ${{ needs.image.outputs.image-ref }}
-      bundle-image-tag: scylla-operator-bundle-${{ github.run_id }}
-      catalog-image-tag: scylla-operator-catalog-${{ github.run_id }}
-    secrets:
-      registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
-
+  # DROP: stands in for the gate, which needs the org's runners and provisioning kubeconfig.
   e2e:
-    needs:
-      - image
-      - olm
-    uses: ./.github/workflows/_e2e-jobs.yaml
-    with:
-      image-ref: ${{ needs.image.outputs.image-ref }}
-      olm-catalog-image-ref: ${{ needs.olm.outputs.catalog-ref }}
-    secrets:
-      ci-provisioners-kubeconfig: ${{ secrets.CI_PROVISIONERS_KUBECONFIG }}
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+    - env:
+        FAIL_GATE: ${{ inputs.fail-gate }}
+      run: '[[ "${FAIL_GATE}" != "true" ]]'
 
-  # Checks the bundle against Red Hat's certification requirements ahead of a release, without submitting the results.
   openshift-preflight:
-    needs: olm
-    uses: ./.github/workflows/_openshift-preflight.yaml
-    with:
-      name: openshift-preflight
-      olm-bundle-image-ref: ${{ needs.olm.outputs.bundle-ref }}
-      olm-catalog-image-ref: ${{ needs.olm.outputs.catalog-ref }}
-    secrets:
-      ci-provisioners-kubeconfig: ${{ secrets.CI_PROVISIONERS_KUBECONFIG }}
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+    - run: 'true'
 
   # Creating the version tag relies on GitHub Actions being a bypass actor of the version tag ruleset.
   tag:
@@ -151,8 +139,8 @@ jobs:
       fail-fast: false
       matrix:
         image-repo-ref:
-        - quay.io/scylladb/scylla-operator
-        - docker.io/scylladb/scylla-operator
+        - quay.io/rzetelskik_scylladb/scylla-operator
+        - docker.io/rzetelskikscylladb/scylla-operator
     name: promote (${{ matrix.image-repo-ref }})
     runs-on: ubuntu-latest
     container:
