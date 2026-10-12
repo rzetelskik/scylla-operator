@@ -43,7 +43,7 @@ jobs:
       matrix:
         include:
         - arch: amd64
-          runner: hosted-runners-standard-pool
+          runner: ubuntu-latest
         - arch: arm64
           runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
@@ -107,7 +107,7 @@ jobs:
   manifest:
     name: manifest
     needs: build
-    runs-on: hosted-runners-standard-pool
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       image-ref: ${{ steps.push.outputs.image-ref }}
