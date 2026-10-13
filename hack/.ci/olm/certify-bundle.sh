@@ -64,7 +64,12 @@ OPERATOR_IMAGE_REF="${OPERATOR_IMAGE_REF:-}"
 export OPERATOR_IMAGE_REF
 
 SUBMIT=${SUBMIT:-false}
-TARGET_BRANCH="${TARGET_BRANCH:-scylladb-operator-${version}}"
+# The branch is force-pushed, so a dry run gets a branch of its own and can't overwrite the one an open PR is from.
+default_target_branch="scylladb-operator-${version}"
+if [[ "${SUBMIT}" != "true" ]]; then
+  default_target_branch+="-dry-run"
+fi
+TARGET_BRANCH="${TARGET_BRANCH:-${default_target_branch}}"
 # The branch is reset to upstream main and pushed to the fork, so targeting the fork's main would move it onto
 # a bundle commit and every later clone would start from it.
 if [[ "${TARGET_BRANCH}" == "main" ]]; then
@@ -119,7 +124,8 @@ cp -r "${release_root}/bundle/"{manifests,metadata} "${target_dir}/"
   git add .
   # https://github.com/redhat-openshift-ecosystem/certification-releases/blob/main/4.9/ga/troubleshooting.md#pull-request-title
   git commit -s -am "operator scylladb-operator (${version})"
-  git push origin "${TARGET_BRANCH}"
+  # The branch is rebuilt from upstream main on every run, so a retry of a failed run has to replace it.
+  git push --force origin "${TARGET_BRANCH}"
 )
 
 # Create a volume claim template file for the pipeline workspace.
