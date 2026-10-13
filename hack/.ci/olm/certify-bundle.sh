@@ -119,7 +119,8 @@ cp -r "${release_root}/bundle/"{manifests,metadata} "${target_dir}/"
   git add .
   # https://github.com/redhat-openshift-ecosystem/certification-releases/blob/main/4.9/ga/troubleshooting.md#pull-request-title
   git commit -s -am "operator scylladb-operator (${version})"
-  git push origin "${TARGET_BRANCH}"
+  # The branch is rebuilt from upstream main on every run, so a retry of a failed run has to replace it.
+  git push --force origin "${TARGET_BRANCH}"
 )
 
 # Create a volume claim template file for the pipeline workspace.
