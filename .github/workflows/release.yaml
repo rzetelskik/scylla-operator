@@ -248,8 +248,9 @@ jobs:
         --latest="${LATEST}"
 
   # Red Hat's pipeline builds the bundle from the manifests pushed to the certified-operators fork, and they pin the
-  # operator image by its published tag, so this runs once `promote` is done. A redispatch runs it again, which fails
-  # loudly if the PR for this version is already open or merged.
+  # operator image by its published tag, so this runs once `promote` is done. A version that's already in
+  # certified-operators or has an open PR from the bot is left unchanged, since the PR is only opened once the pipeline
+  # passes. To replace the bundle of an open PR, close it and dispatch the release again.
   certify-olm-bundle:
     needs:
     - plan-release
@@ -265,7 +266,38 @@ jobs:
       GIT_CONFIG_KEY_0: safe.directory
       GIT_CONFIG_VALUE_0: "*"
     steps:
+    - name: Check for an existing submission
+      id: existing
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.plan-release.outputs.tag }}
+      run: |
+        set -euEo pipefail
+        shopt -s inherit_errexit
+
+        repo=redhat-openshift-ecosystem/certified-operators
+        version="${TAG#v}"
+
+        # Listing the directory keeps a missing version apart from a failed request, which a 404 wouldn't.
+        if gh api "repos/${repo}/contents/operators/scylladb-operator" --jq '.[].name' | grep -qFx "${version}"; then
+          echo "::notice::Version ${version} is already in ${repo}, leaving it unchanged."
+          echo "found=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        # --head matches the branch name only, so the PR is also filtered by the fork it comes from.
+        pr_url="$( gh pr list --repo "${repo}" --head "scylladb-operator-${version}" --state open \
+          --json url,headRepositoryOwner -q '.[] | select(.headRepositoryOwner.login == "scylladb-operator-cd-bot") | .url' )"
+        if [[ -n "${pr_url}" ]]; then
+          echo "::notice::Version ${version} is already submitted in ${pr_url}, leaving it unchanged."
+          echo "found=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        echo "found=false" >> "${GITHUB_OUTPUT}"
+
     - name: Checkout the release
+      if: ${{ steps.existing.outputs.found == 'false' }}
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ needs.plan-release.outputs.tag }}
@@ -275,12 +307,14 @@ jobs:
         persist-credentials: false
 
     - name: Checkout the tooling
+      if: ${{ steps.existing.outputs.found == 'false' }}
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         path: tooling
         persist-credentials: false
 
     - name: Materialize the credentials
+      if: ${{ steps.existing.outputs.found == 'false' }}
       id: credentials
       env:
         CLUSTER_KUBECONFIG: ${{ secrets.OPENSHIFT_CERTIFICATION_CLUSTER_KUBECONFIG }}
@@ -306,6 +340,7 @@ jobs:
         echo "ssh-key=${ssh_key}" >> "${GITHUB_OUTPUT}"
 
     - name: Certify the bundle
+      if: ${{ steps.existing.outputs.found == 'false' }}
       env:
         TAG: ${{ needs.plan-release.outputs.tag }}
         SUBMIT: "true"
