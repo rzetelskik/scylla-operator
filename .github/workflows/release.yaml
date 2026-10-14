@@ -247,14 +247,57 @@ jobs:
         --prerelease="${PRERELEASE}" \
         --latest="${LATEST}"
 
-  # Red Hat's pipeline builds the bundle from the manifests pushed to the certified-operators fork, and they pin the
-  # operator image by its published tag, so this runs once `promote` is done. A redispatch runs it again, which fails
-  # loudly if the PR for this version is already open or merged.
-  certify-olm-bundle:
+  # Leaves a version unchanged if it's already in certified-operators or has an open PR from the bot, since the PR is
+  # only opened once the pipeline passes. To replace the bundle of an open PR, close it and dispatch the release again.
+  # Runs outside of the certification job's container, which has no gh.
+  check-olm-bundle-submission:
     needs:
     - plan-release
     - github-release
     if: ${{ !cancelled() && !failure() && needs.github-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      found: ${{ steps.existing.outputs.found }}
+    steps:
+    - name: Check for an existing submission
+      id: existing
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.plan-release.outputs.tag }}
+      run: |
+        set -euEo pipefail
+        shopt -s inherit_errexit
+
+        repo=redhat-openshift-ecosystem/certified-operators
+        version="${TAG#v}"
+
+        # Listing the directory keeps a missing version apart from a failed request, which a 404 wouldn't.
+        merged="$( gh api "repos/${repo}/contents/operators/scylladb-operator" --jq ".[] | select(.name == \"${version}\") | .name" )"
+        if [[ -n "${merged}" ]]; then
+          echo "::notice::Version ${version} is already in ${repo}, leaving it unchanged."
+          echo "found=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        # --head matches the branch name only, so the PR is also filtered by the fork it comes from.
+        pr_url="$( gh pr list --repo "${repo}" --head "scylladb-operator-${version}" --state open \
+          --json url,headRepositoryOwner -q '.[] | select(.headRepositoryOwner.login == "scylladb-operator-cd-bot") | .url' )"
+        if [[ -n "${pr_url}" ]]; then
+          echo "::notice::Version ${version} is already submitted in ${pr_url}, leaving it unchanged."
+          echo "found=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        echo "found=false" >> "${GITHUB_OUTPUT}"
+
+  # Red Hat's pipeline builds the bundle from the manifests pushed to the certified-operators fork, and they pin the
+  # operator image by its published tag, so this runs once `promote` is done.
+  certify-olm-bundle:
+    needs:
+    - plan-release
+    - check-olm-bundle-submission
+    if: ${{ !cancelled() && !failure() && needs.check-olm-bundle-submission.outputs.found == 'false' }}
     runs-on: hosted-runners-standard-pool
     container:
       image: quay.io/scylladb/scylla-operator-images:kube-tools
