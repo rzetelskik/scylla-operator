@@ -3,7 +3,7 @@ name: Cluster tests
 # Every test running a build of the operator on a cluster, defined once for all the workflows that run them: the e2e
 # suites on kind, GKE, OKE and OpenShift, and the OpenShift preflight checks of the OLM bundle. Runs the selected tests
 # against the caller's operator image, and the OLM bundle and catalog deploying it for the tests that need them. The
-# callers select the tests by their ids. The kind suites build their own operator image.
+# callers select the tests by their ids.
 on:
   workflow_call:
     inputs:
@@ -197,6 +197,7 @@ jobs:
     uses: ./.github/workflows/_e2e-kind.yaml
     with:
       name: e2e-${{ matrix.id }}
+      image-ref: ${{ inputs.image-ref }}
       suite: ${{ matrix.suite }}
       scylladb-image-ref: ${{ matrix.scylladb-image-ref }}
       enable-parallel-node-operations: ${{ matrix.enable-parallel-node-operations }}
