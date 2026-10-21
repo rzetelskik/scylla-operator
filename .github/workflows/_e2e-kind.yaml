@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       name:
-        description: Short slug identifying this run among the kind e2e suites, e.g. `fast`. Used for the job name and the artifact name.
+        description: Short slug identifying this run, e.g. `e2e-kind-fast`. Used for the job name and the artifact name.
         required: true
         type: string
       suite:
@@ -38,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: Short slug identifying this run among the kind e2e suites, e.g. `fast`. Used for the job name and the artifact name.
+        description: Short slug identifying this run, e.g. `e2e-kind-fast`. Used for the job name and the artifact name.
         required: true
         type: string
       suite:
@@ -169,5 +169,5 @@ jobs:
       if: always()
       uses: ./.github/actions/pack-and-upload-artifacts
       with:
-        name: artifacts-e2e-kind-${{ inputs.name }}-${{ github.run_attempt }}
+        name: artifacts-${{ inputs.name }}-${{ github.run_attempt }}
         directory: ${{ env.ARTIFACTS }}

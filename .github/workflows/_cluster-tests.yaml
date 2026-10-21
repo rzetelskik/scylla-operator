@@ -1,8 +1,9 @@
-name: E2E jobs
+name: Cluster tests
 
-# Every e2e job, defined once for all the workflows that run them. Runs the selected jobs against the caller's operator
-# image, and the OLM catalog serving it for the jobs installing the operator through OLM. The callers select the jobs by
-# their ids.
+# Every test running a build of the operator on a cluster, defined once for all the workflows that run them: the e2e
+# suites on kind, GKE, OKE and OpenShift, and the OpenShift preflight checks of the OLM bundle. Runs the selected tests
+# against the caller's operator image, and the OLM bundle and catalog deploying it for the tests that need them. The
+# callers select the tests by their ids. The kind suites build their own operator image.
 on:
   workflow_call:
     inputs:
@@ -10,15 +11,19 @@ on:
         description: Digest-pinned reference to the operator image to test, as `_image.yaml` outputs it.
         required: true
         type: string
+      olm-bundle-image-ref:
+        description: Digest-pinned reference to the OLM bundle of the operator image, as `_olm.yaml` outputs it.
+        required: true
+        type: string
       olm-catalog-image-ref:
         description: >-
           Digest-pinned reference to the OLM catalog serving a bundle of the operator image, as `_olm.yaml` outputs it.
         required: true
         type: string
-      jobs:
+      tests:
         description: >-
-          JSON list of glob patterns matching the ids of the jobs to run, e.g. `["gke-parallel"]`, or `["!oke-*"]` for
-          every job but OKE ones, as `hack/.ci/select-jobs.sh` matches them. Runs every job when omitted.
+          JSON list of glob patterns matching the ids of the tests to run, e.g. `["gke-parallel"]`, or `["!oke-*"]` for
+          every test but OKE ones, as `hack/.ci/select-jobs.sh` matches them. Runs every test when omitted.
         required: false
         type: string
     secrets:
@@ -36,9 +41,11 @@ jobs:
   plan:
     runs-on: hosted-runners-standard-pool
     outputs:
+      kind: ${{ steps.plan.outputs.kind }}
       gke: ${{ steps.plan.outputs.gke }}
       oke: ${{ steps.plan.outputs.oke }}
       openshift: ${{ steps.plan.outputs.openshift }}
+      openshift-preflight: ${{ steps.plan.outputs.openshift-preflight }}
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,11 +55,35 @@ jobs:
     - id: plan
       shell: bash
       env:
-        JOBS: ${{ inputs.jobs }}
+        TESTS: ${{ inputs.tests }}
       run: |
         set -euExo pipefail
         shopt -s inherit_errexit
 
+        kind_defaults='{
+          "scylladb-image-ref": "",
+          "enable-parallel-node-operations": "",
+          "parallelism": 0,
+          "e2e-timeout": "90m"
+        }'
+        # The old node-exporter bundling within the ScyllaDB container (before 2026.3) is verified for as long as we
+        # support <2026.3.
+        kind='[
+          {
+            "id": "kind-fast",
+            "suite": "kind-fast"
+          },
+          {
+            "id": "kind-scylladb-monitoring-old-node-exporter",
+            "suite": "kind-scylladb-monitoring",
+            "scylladb-image-ref": "docker.io/scylladb/scylla:2026.2.6"
+          },
+          {
+            "id": "kind-cluster-topology-sequential",
+            "suite": "kind-cluster-topology",
+            "enable-parallel-node-operations": "false"
+          }
+        ]'
         gke_defaults='{
           "cluster-manifest": "./hack/.ci/manifests/ci-clusters/gke.yaml",
           "object-storage": false,
@@ -136,16 +167,41 @@ jobs:
             "storageclass-name": ""
           }
         ]'
+        openshift_preflight='[
+          {
+            "id": "openshift-preflight"
+          }
+        ]'
 
-        mapfile -t ids < <( jq -sr 'add | .[].id' <<< "${gke} ${oke} ${openshift}" )
-        SELECTED="$( ./hack/.ci/select-jobs.sh "${JOBS:-[\"*\"]}" "${ids[@]}" )"
+        mapfile -t ids < <( jq -sr 'add | .[].id' <<< "${kind} ${gke} ${oke} ${openshift} ${openshift_preflight}" )
+        SELECTED="$( ./hack/.ci/select-jobs.sh "${TESTS:-[\"*\"]}" "${ids[@]}" )"
         export SELECTED
         select='(env.SELECTED | fromjson) as $jobs | map(select(.id | IN($jobs[])))'
         {
+          echo "kind=$( jq -c --argjson defaults "${kind_defaults}" "${select} | map(\$defaults + .)" <<< "${kind}" )"
           echo "gke=$( jq -c --argjson defaults "${gke_defaults}" "${select} | map(\$defaults + .)" <<< "${gke}" )"
           echo "oke=$( jq -c "${select}" <<< "${oke}" )"
           echo "openshift=$( jq -c --argjson defaults "${openshift_defaults}" "${select} | map(\$defaults + .)" <<< "${openshift}" )"
+          echo "openshift-preflight=$( jq -c "${select}" <<< "${openshift_preflight}" )"
         } >> "${GITHUB_OUTPUT}"
+
+  kind:
+    needs: plan
+    # An empty matrix is an error.
+    if: needs.plan.outputs.kind != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.kind) }}
+    name: ${{ matrix.id }}
+    uses: ./.github/workflows/_e2e-kind.yaml
+    with:
+      name: e2e-${{ matrix.id }}
+      suite: ${{ matrix.suite }}
+      scylladb-image-ref: ${{ matrix.scylladb-image-ref }}
+      enable-parallel-node-operations: ${{ matrix.enable-parallel-node-operations }}
+      parallelism: ${{ matrix.parallelism }}
+      e2e-timeout: ${{ matrix.e2e-timeout }}
 
   gke:
     needs: plan
@@ -207,5 +263,23 @@ jobs:
       object-storage: ${{ matrix.object-storage }}
       storageclass-name: ${{ matrix.storageclass-name }}
       nodeconfig-path: ${{ matrix.nodeconfig-path }}
+    secrets:
+      ci-provisioners-kubeconfig: ${{ secrets.ci-provisioners-kubeconfig }}
+
+  # Checks the bundle against Red Hat's certification requirements, without submitting the results.
+  openshift-preflight:
+    needs: plan
+    # An empty matrix is an error.
+    if: needs.plan.outputs.openshift-preflight != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.openshift-preflight) }}
+    name: ${{ matrix.id }}
+    uses: ./.github/workflows/_openshift-preflight.yaml
+    with:
+      name: ${{ matrix.id }}
+      olm-bundle-image-ref: ${{ inputs.olm-bundle-image-ref }}
+      olm-catalog-image-ref: ${{ inputs.olm-catalog-image-ref }}
     secrets:
       ci-provisioners-kubeconfig: ${{ secrets.ci-provisioners-kubeconfig }}

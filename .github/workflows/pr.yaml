@@ -11,14 +11,65 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    uses: ./.github/workflows/_ci-jobs.yaml
+  checks:
+    uses: ./.github/workflows/_checks.yaml
+
+  detect-source-changes:
+    name: detect-source-changes
+    runs-on: hosted-runners-standard-pool
+    # The action reads the PR's changed files from the GitHub API, so there is no checkout to make.
     permissions:
-      contents: read
-      # For detect-source-changes to read the PR's changed files.
       pull-requests: read
+    outputs:
+      source-changed: ${{ steps.source-change-detection.outputs.source }}
+    steps:
+      - name: Detect source changes
+        id: source-change-detection
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # With 'every', a changed file counts only when it matches all rules, i.e. escapes every exclusion.
+          predicate-quantifier: every
+          filters: |
+            source:
+              - '!CODEOWNERS'
+              - '!docs/**'
+              - '!enhancements/**'
+              - '!**/*.md'
+              - '!renovate.json'
+
+  # On a PR from a fork this fails for lack of secrets, and so do the jobs needing it, rather than the tests being
+  # skipped and counted as passed. Skipping it on a change of no source skips the tests with it.
+  image:
+    needs: detect-source-changes
+    if: needs.detect-source-changes.outputs.source-changed == 'true'
+    uses: ./.github/workflows/_image.yaml
+    with:
+      image-tag: scylla-operator-${{ github.run_id }}
     secrets:
       registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
+
+  # Fails the PR on a bundle or catalog that doesn't build.
+  olm:
+    needs: image
+    uses: ./.github/workflows/_olm.yaml
+    with:
+      image-ref: ${{ needs.image.outputs.image-ref }}
+      bundle-image-tag: scylla-operator-bundle-${{ github.run_id }}
+      catalog-image-tag: scylla-operator-catalog-${{ github.run_id }}
+    secrets:
+      registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
+
+  tests:
+    needs:
+    - image
+    - olm
+    uses: ./.github/workflows/_cluster-tests.yaml
+    with:
+      image-ref: ${{ needs.image.outputs.image-ref }}
+      olm-bundle-image-ref: ${{ needs.olm.outputs.bundle-ref }}
+      olm-catalog-image-ref: ${{ needs.olm.outputs.catalog-ref }}
+      tests: '["kind-*", "gke-parallel", "gke-parallel-clusterip", "gke-serial"]'
+    secrets:
       ci-provisioners-kubeconfig: ${{ secrets.CI_PROVISIONERS_KUBECONFIG }}
 
   verify-commits:
@@ -43,7 +94,11 @@ jobs:
   check-required:
     runs-on: hosted-runners-standard-pool
     needs:
-    - ci
+    - checks
+    - detect-source-changes
+    - image
+    - olm
+    - tests
     - verify-commits
     if: always()
     steps:
