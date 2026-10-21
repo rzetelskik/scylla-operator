@@ -47,35 +47,30 @@ jobs:
         state: pending
         description: Running ${{ inputs.tests }}
 
+  # DROP: stubs of the image, OLM and test jobs, so only the status reporting is real. A selection containing "fail"
+  # fails the tests.
   image:
-    uses: ./.github/workflows/_image.yaml
-    with:
-      image-tag: scylla-operator-${{ github.run_id }}
-    secrets:
-      registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
+    runs-on: ubuntu-latest
+    steps:
+    - run: sleep 30
 
   olm:
     needs: image
-    uses: ./.github/workflows/_olm.yaml
-    with:
-      image-ref: ${{ needs.image.outputs.image-ref }}
-      bundle-image-tag: scylla-operator-bundle-${{ github.run_id }}
-      catalog-image-tag: scylla-operator-catalog-${{ github.run_id }}
-    secrets:
-      registry-auth-json: ${{ secrets.QUAY_SCYLLADB_DEV_PR_PUBLISHER_CREDS }}
+    runs-on: ubuntu-latest
+    steps:
+    - run: sleep 30
 
   tests:
     needs:
     - image
     - olm
-    uses: ./.github/workflows/_cluster-tests.yaml
-    with:
-      image-ref: ${{ needs.image.outputs.image-ref }}
-      olm-bundle-image-ref: ${{ needs.olm.outputs.bundle-ref }}
-      olm-catalog-image-ref: ${{ needs.olm.outputs.catalog-ref }}
-      tests: ${{ inputs.tests }}
-    secrets:
-      ci-provisioners-kubeconfig: ${{ secrets.CI_PROVISIONERS_KUBECONFIG }}
+    runs-on: ubuntu-latest
+    env:
+      TESTS: ${{ inputs.tests }}
+    steps:
+    - run: |
+        sleep 60
+        [[ "${TESTS}" != *fail* ]]
 
   # A run cancelled by the next one on the same ref leaves the status to that run. A run cancelled by hand stays pending
   # until it's dispatched again.
