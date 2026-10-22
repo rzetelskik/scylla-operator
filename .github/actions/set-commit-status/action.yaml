@@ -1,0 +1,39 @@
+name: Set a commit status
+description: >-
+  Sets a commit status linking to the current run. The job needs the `statuses: write` permission.
+
+inputs:
+  context:
+    description: Context of the status, the name it shows under on the commit and its PRs.
+    required: true
+  state:
+    description: State of the status, one of `pending`, `success`, `failure` or `error`.
+    required: true
+  description:
+    description: Short description of the status. Cut to the 140 characters GitHub accepts.
+    required: true
+  sha:
+    description: Commit to set the status on.
+    required: false
+    default: ${{ github.sha }}
+
+runs:
+  using: composite
+  steps:
+  - shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CONTEXT: ${{ inputs.context }}
+      STATE: ${{ inputs.state }}
+      DESCRIPTION: ${{ inputs.description }}
+      SHA: ${{ inputs.sha }}
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    run: |
+      set -euExo pipefail
+      shopt -s inherit_errexit
+
+      gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+      --raw-field state="${STATE}" \
+      --raw-field context="${CONTEXT}" \
+      --raw-field target_url="${TARGET_URL}" \
+      --raw-field description="${DESCRIPTION:0:140}"

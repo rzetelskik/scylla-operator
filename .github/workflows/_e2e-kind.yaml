@@ -4,7 +4,13 @@ on:
   workflow_call:
     inputs:
       name:
-        description: Short slug identifying this run among the kind e2e suites, e.g. `fast`. Used for the job name and the artifact name.
+        description: Short slug identifying this run, e.g. `e2e-kind-fast`. Used for the job name and the artifact name.
+        required: true
+        type: string
+      image-ref:
+        description: >-
+          Reference of the Operator image to test, as `name:tag`, `name@digest` or `name:tag@digest`, e.g.
+          `quay.io/scylladb/scylla-operator:1.22.0` or `quay.io/scylladb/scylla-operator@sha256:6a1f0c...`.
         required: true
         type: string
       suite:
@@ -34,12 +40,20 @@ on:
         default: 90m
         type: string
   # The dispatch runs a single suite with the parameters below. The triggers keep separate input blocks by design,
-  # so the workflow_call inputs above are mirrored here; both feed the same `inputs` context.
+  # so the workflow_call inputs above are mirrored here; both feed the same `inputs` context. Only `image-ref` differs:
+  # a dispatch can leave it empty for the suite to build the image itself.
   workflow_dispatch:
     inputs:
       name:
-        description: Short slug identifying this run among the kind e2e suites, e.g. `fast`. Used for the job name and the artifact name.
+        description: Short slug identifying this run, e.g. `e2e-kind-fast`. Used for the job name and the artifact name.
         required: true
+        type: string
+      image-ref:
+        description: >-
+          Reference of the Operator image to test, as `name:tag`, `name@digest` or `name:tag@digest`. Empty builds it
+          from the dispatched ref.
+        required: false
+        default: ""
         type: string
       suite:
         description: Name of the `scylla-operator-tests` suite to run, e.g. `kind-fast`.
@@ -126,6 +140,7 @@ jobs:
 
     - name: Run the e2e suite
       env:
+        SO_IMAGE: ${{ inputs.image-ref }}
         SO_SUITE: ${{ inputs.suite }}
         SCYLLADB_IMAGE_REF: ${{ inputs.scylladb-image-ref }}
         SO_SCYLLACLUSTER_ENABLE_PARALLEL_NODE_OPERATIONS: ${{ inputs.enable-parallel-node-operations }}
@@ -169,5 +184,5 @@ jobs:
       if: always()
       uses: ./.github/actions/pack-and-upload-artifacts
       with:
-        name: artifacts-e2e-kind-${{ inputs.name }}-${{ github.run_attempt }}
+        name: artifacts-${{ inputs.name }}-${{ github.run_attempt }}
         directory: ${{ env.ARTIFACTS }}
