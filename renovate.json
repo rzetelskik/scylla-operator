@@ -7,7 +7,8 @@
   "enabledManagers": [
     "custom.regex",
     "gomod",
-    "github-actions"
+    "github-actions",
+    "pep621"
   ],
   "ignorePaths": [],
   "schedule": [
@@ -239,6 +240,17 @@
         "3. Review the regenerated manifests. A driver release may change the sidecar images, the provisioner flags or the RBAC rules, and those changes land in this PR.",
         "4. Remove the `do-not-merge/hold` label."
       ]
+    },
+    {
+      "description": "Docs Python dependencies should be updated together, including transitive ones through lock file maintenance",
+      "matchManagers": [
+        "pep621"
+      ],
+      "rangeStrategy": "update-lockfile",
+      "groupName": "docs",
+      "lockFileMaintenance": {
+        "enabled": true
+      }
     }
   ],
   "customManagers": [
