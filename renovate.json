@@ -251,6 +251,24 @@
       "lockFileMaintenance": {
         "enabled": true
       }
+    },
+    {
+      "description": "Docs Python version is pinned to the one in the uv image, so it is bumped separately from the other docs dependencies",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "requires-python"
+      ],
+      "groupName": null,
+      "prBodyNotes": [
+        "### ⚠️ Manual Action Required",
+        "Renovate has bumped the docs Python version, but the uv image used to build the docs only ships the Python version it was built with.",
+        "",
+        "**Please complete the following steps before merging:**",
+        "1. Bump the Python version installed in the uv image in https://github.com/scylladb/scylla-operator-images.",
+        "2. Update the scylla-operator-images commit linked in `docs/pyproject.toml`."
+      ]
     }
   ],
   "customManagers": [
